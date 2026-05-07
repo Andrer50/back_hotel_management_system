@@ -1,0 +1,17 @@
+# Entornos virtuales
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Base de datos local
+db.sqlite3
+
+# Variables de entorno
+.env
+
+# SO
+.DS_Store
