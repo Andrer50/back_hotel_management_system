@@ -1,67 +1,167 @@
-🏨 Hotel Management - Backend (Django API)
-Este es el repositorio del backend para el proyecto de gestión hotelera. Está construido con Django y Django REST Framework, utilizando PostgreSQL como base de datos.
+# 🏨 Hotel Management — Backend API
 
-🚀 Guía de Inicio Rápido
-Sigue estos pasos para configurar tu entorno local y empezar a desarrollar.
+> API REST para el sistema de gestión hotelera, construida con Django y Django REST Framework sobre PostgreSQL.
 
-1. Clonar el repositorio y preparar el entorno
-   Bash
+---
 
-# Crear el entorno virtual
+## 📋 Tabla de contenidos
 
+- [Tecnologías](#-tecnologías)
+- [Inicio rápido](#-inicio-rápido)
+- [Variables de entorno](#-variables-de-entorno)
+- [Comandos útiles](#-comandos-útiles)
+- [Contribuir](#-contribuir)
+
+---
+
+## 🛠️ Tecnologías
+
+| Tecnología            | Versión | Propósito              |
+| --------------------- | ------- | ---------------------- |
+| Python                | 3.x     | Lenguaje base          |
+| Django                | latest  | Framework principal    |
+| Django REST Framework | latest  | Construcción de la API |
+| PostgreSQL            | latest  | Motor de base de datos |
+| python-dotenv         | latest  | Variables de entorno   |
+
+---
+
+## 🚀 Inicio rápido
+
+### 1. Clonar el repositorio
+
+```bash
+git clone <url-del-repositorio>
+cd <nombre-del-proyecto>
+```
+
+### 2. Crear y activar el entorno virtual
+
+```bash
+# Crear entorno virtual
 python -m venv venv
 
-# Activar el entorno virtual (Git Bash / macOS / Linux)
+# Activar — macOS / Linux / Git Bash
+source venv/bin/activate
 
-source venv/Scripts/activate
+# Activar — Windows PowerShell
+.\venv\Scripts\Activate.ps1
+```
 
-# Activar el entorno virtual (PowerShell)
+> 💡 Verifica que el entorno esté activo: debe aparecer `(venv)` al inicio de tu terminal.
 
-# .\venv\Scripts\Activate.ps1
+### 3. Instalar dependencias
 
-2. Instalar dependencias
-   Asegúrate de tener el entorno virtual activo ((venv) debe aparecer en tu terminal).
+```bash
+pip install -r requirements.txt
+```
 
-Bash
-pip install -r requirements.txt 3. Configuración de Base de Datos
-Actualmente, el proyecto está preparado para conectarse a PostgreSQL.
+### 4. Configurar variables de entorno
 
-Crea un archivo .env en la raíz basándote en el archivo .env.example.
+```bash
+# Copiar el archivo de ejemplo
+cp .env.example .env
+```
 
-Asegúrate de tener los accesos de la base de datos configurados.
+Edita `.env` con tus credenciales de base de datos. Ver sección [Variables de entorno](#-variables-de-entorno).
 
-4. Migraciones y Ejecución
-   Una vez configurada la base de datos, prepara las tablas e inicia el servidor:
+### 5. Aplicar migraciones e iniciar el servidor
 
-Bash
+```bash
+python manage.py migrate
+python manage.py runserver
+```
 
-# Aplicar migraciones
+✅ La API estará disponible en: **http://127.0.0.1:8000/**
 
+---
+
+## 🔐 Variables de entorno
+
+Crea un archivo `.env` en la raíz del proyecto basándote en `.env.example`:
+
+```env
+# Base de datos
+DB_NAME=hotel_db
+DB_USER=tu_usuario
+DB_PASSWORD=tu_contraseña
+DB_HOST=localhost
+DB_PORT=5432
+
+# Django
+SECRET_KEY=tu_secret_key
+DEBUG=True
+```
+
+> ⚠️ **Nunca** subas el archivo `.env` al repositorio. Está incluido en `.gitignore`.
+
+---
+
+## ⚙️ Comandos útiles
+
+```bash
+# Crear nuevas migraciones tras modificar modelos
+python manage.py makemigrations
+
+# Aplicar migraciones pendientes
 python manage.py migrate
 
-# Iniciar servidor de desarrollo
+# Crear superusuario para el admin de Django
+python manage.py createsuperuser
 
-python manage.py runserver
-La API estará disponible en: http://127.0.0.1:8000/
+# Ejecutar tests
+python manage.py test
+```
 
-🛠️ Tecnologías utilizadas
-Python 3.x
+---
 
-Django (Framework principal)
+## ⚠️ Notas importantes
 
-Django REST Framework (Para la creación de la API)
+> [!IMPORTANT]
+> **Base de datos en producción:** Se planea usar una instancia de PostgreSQL en Render.
+> Para desarrollo local, configura una base de datos PostgreSQL propia o solicita las credenciales del entorno compartido al equipo.
 
-PostgreSQL (Motor de base de datos)
+> [!NOTE]
+> Si no tienes PostgreSQL instalado localmente, puedes usar [Docker](https://docs.docker.com/get-docker/):
+>
+> ```bash
+> docker run --name hotel-db -e POSTGRES_PASSWORD=postgres -p 5432:5432 -d postgres
+> ```
 
-python-dotenv (Gestión de variables de entorno)
+---
 
-⚠️ Notas Importantes
-[!IMPORTANT]
-Base de Datos: Actualmente se planea usar una instancia de PostgreSQL en Render. Por ahora, asegúrate de tener una base de datos local para pruebas o solicita las credenciales del entorno de desarrollo.
+## 🤝 Contribuir
 
-¿Cómo contribuir?
-Crea una nueva rama para tu funcionalidad: git checkout -b feat/nombre-de-la-mejora.
+1. Crea una rama para tu funcionalidad:
 
-Realiza tus cambios y haz commit: git commit -m "feat: descripción del cambio".
+   ```bash
+   git checkout -b feat/nombre-de-la-mejora
+   ```
 
-Sube tus cambios: git push origin feat/nombre-de-la-mejora.
+2. Realiza tus cambios y haz commit siguiendo [Conventional Commits](https://www.conventionalcommits.org/):
+
+   ```bash
+   git commit -m "feat: descripción breve del cambio"
+   ```
+
+3. Sube tu rama:
+
+   ```bash
+   git push origin feat/nombre-de-la-mejora
+   ```
+
+4. Abre un **Pull Request** hacia `main` describiendo los cambios realizados.
+
+### Tipos de commit
+
+| Prefijo     | Uso                                          |
+| ----------- | -------------------------------------------- |
+| `feat:`     | Nueva funcionalidad                          |
+| `fix:`      | Corrección de bug                            |
+| `docs:`     | Cambios en documentación                     |
+| `refactor:` | Refactorización sin cambio de comportamiento |
+| `test:`     | Añadir o modificar tests                     |
+
+---
+
+_Proyecto desarrollado con ❤️ — cualquier duda, abre un issue._
