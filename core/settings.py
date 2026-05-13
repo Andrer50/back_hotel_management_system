@@ -31,6 +31,9 @@ DEBUG = os.getenv('DEBUG', 'True').lower() in ('true', '1', 't')
 
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
+# Disable automatic slash redirection to avoid 500 on POST requests without trailing slash
+APPEND_SLASH = False
+
 # Application definition
 
 INSTALLED_APPS = [
@@ -141,10 +144,20 @@ CORS_ALLOW_ALL_ORIGINS = True  # Set to False and specify allowed origins in pro
 # Django REST Framework Settings
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.AllowAny',
+        'rest_framework.permissions.IsAuthenticated',
     ],
     'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
         'rest_framework.authentication.SessionAuthentication',
         'rest_framework.authentication.BasicAuthentication',
     ],
+}
+
+from datetime import timedelta
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ROTATE_REFRESH_TOKENS': False,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'AUTH_HEADER_TYPES': ('Bearer',),
 }

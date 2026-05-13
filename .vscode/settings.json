@@ -1,0 +1,9 @@
+{
+    "python.defaultInterpreterPath": "c:\\proyectos-u\\back_hotel_management_system\\venv\\Scripts\\python.exe",
+    "python.analysis.extraPaths": [
+        "c:\\proyectos-u\\back_hotel_management_system\\venv\\Lib\\site-packages"
+    ],
+    "python.analysis.venvPath": "c:\\proyectos-u\\back_hotel_management_system",
+    "python.venvPath": "c:\\proyectos-u\\back_hotel_management_system",
+    "python.analysis.venv": "venv"
+}

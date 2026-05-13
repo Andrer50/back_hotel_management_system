@@ -41,15 +41,18 @@ class Usuario(AbstractUser):
     sede asignada.
     """
     class Rol(models.TextChoices):
-        ADMINISTRADOR = 'ADMINISTRADOR', 'Administrador'
-        RECEPCIONISTA = 'RECEPCIONISTA', 'Recepcionista'
+        ADMIN = 'ADMIN', 'Administrador'
+        INVENTORY = 'INVENTORY', 'Encargado de Inventario'
+        USER = 'USER', 'Usuario / Cliente'
+        # Roles temporales para compatibilidad con código existente
+        RECEPCionista = 'RECEPCIONISTA', 'Recepcionista'
         MANTENIMIENTO = 'MANTENIMIENTO', 'Personal de Mantenimiento'
         LIMPIEZA = 'LIMPIEZA', 'Personal de Limpieza'
 
     role = models.CharField(
         max_length=20,
         choices=Rol.choices,
-        default=Rol.RECEPCIONISTA,
+        default=Rol.USER,
         verbose_name='Rol del usuario'
     )
     sede_asignada = models.ForeignKey(
