@@ -35,7 +35,7 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
         return ApiResponse.success(data=serializer.data)
 
 class RoleListCreateView(generics.ListCreateAPIView):
-    queryset = Group.objects.all()
+    queryset = Group.objects.all().order_by('id')
     serializer_class = RoleSerializer
     permission_classes = (permissions.IsAuthenticated,)
 
@@ -89,7 +89,7 @@ class PermissionListView(generics.ListAPIView):
         serializer = self.get_serializer(queryset, many=True)
         return ApiResponse.success(data=serializer.data)
 class UserListView(generics.ListAPIView):
-    queryset = Usuario.objects.all()
+    queryset = Usuario.objects.all().order_by('id')
     serializer_class = UsuarioSerializer
     permission_classes = (permissions.IsAuthenticated,)
 
@@ -97,3 +97,26 @@ class UserListView(generics.ListAPIView):
         queryset = self.get_queryset()
         serializer = self.get_serializer(queryset, many=True)
         return ApiResponse.success(data=serializer.data)
+
+class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Usuario.objects.all()
+    serializer_class = UsuarioSerializer
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return ApiResponse.success(data=serializer.data)
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return ApiResponse.success(data=serializer.data, message="Usuario actualizado exitosamente")
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        return ApiResponse.success(message="Usuario eliminado exitosamente")
