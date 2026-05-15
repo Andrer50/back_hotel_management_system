@@ -1,6 +1,6 @@
 import uuid
 from django.db import models
-from django.contrib.auth.models import AbstractUser
+from django.contrib.auth.models import AbstractUser, Group
 
 # ==============================================================================
 # MÓDULO A: ADMINISTRACIÓN Y SEGURIDAD (Y CONFIGURACIÓN GLOBAL)
@@ -40,19 +40,12 @@ class Usuario(AbstractUser):
     para incorporar la gestión de roles internos del personal del hotel y su
     sede asignada.
     """
-    class Rol(models.TextChoices):
-        ADMIN = 'ADMIN', 'Administrador'
-        INVENTORY = 'INVENTORY', 'Encargado de Inventario'
-        USER = 'USER', 'Usuario / Cliente'
-        # Roles temporales para compatibilidad con código existente
-        RECEPCionista = 'RECEPCIONISTA', 'Recepcionista'
-        MANTENIMIENTO = 'MANTENIMIENTO', 'Personal de Mantenimiento'
-        LIMPIEZA = 'LIMPIEZA', 'Personal de Limpieza'
-
-    role = models.CharField(
-        max_length=20,
-        choices=Rol.choices,
-        default=Rol.USER,
+    role = models.ForeignKey(
+        Group,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='usuarios',
         verbose_name='Rol del usuario'
     )
     sede_asignada = models.ForeignKey(
@@ -73,11 +66,20 @@ class Usuario(AbstractUser):
     class Meta:
         verbose_name = 'Usuario'
         verbose_name_plural = 'Usuarios'
+        permissions = [
+            ("can_clean_rooms", "Can clean rooms"),
+            ("can_do_maintenance", "Can do maintenance"),
+            ("can_manage_users", "Can manage users"),
+            ("can_manage_roles", "Can manage roles"),
+            ("can_manage_inventory", "Can manage inventory"),
+            ("can_manage_reservations", "Can manage reservations"),
+            ("can_view_reports", "Can view reports"),
+        ]
 
     def __str__(self):
         fullname = self.get_full_name()
         display_name = fullname if fullname else self.username
-        return f"{display_name} ({self.get_role_display()})"
+        return f"{display_name} ({self.role.name if self.role else 'Sin Rol'})"
 
 
 # ==============================================================================
@@ -246,7 +248,7 @@ class RegistroLimpieza(models.Model):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        limit_choices_to={'role': Usuario.Rol.LIMPIEZA},
+        limit_choices_to={'role__permissions__codename': 'can_clean_rooms'},
         related_name='limpiezas_asignadas',
         verbose_name='Personal de limpieza'
     )
@@ -329,7 +331,7 @@ class Incidencia(models.Model):
         on_delete=models.SET_NULL,
         blank=True,
         null=True,
-        limit_choices_to={'role': Usuario.Rol.MANTENIMIENTO},
+        limit_choices_to={'role__permissions__codename': 'can_do_maintenance'},
         related_name='incidencias_asignadas',
         verbose_name='Asignado a (Personal de Mantenimiento)'
     )

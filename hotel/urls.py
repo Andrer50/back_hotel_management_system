@@ -2,7 +2,14 @@ from django.urls import path
 from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
-from .views import RegisterView, UserProfileView
+from .views import (
+    RegisterView, 
+    UserProfileView,
+    RoleListCreateView,
+    RoleDetailView,
+    PermissionListView,
+    UserListView
+)
 from .auth_views import MyTokenObtainPairView
 
 urlpatterns = [
@@ -10,4 +17,10 @@ urlpatterns = [
     path('login', MyTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('token/refresh', TokenRefreshView.as_view(), name='token_refresh'),
     path('profile', UserProfileView.as_view(), name='profile'),
+    path('users', UserListView.as_view(), name='user-list'),
+    
+    # Roles y Permisos
+    path('roles', RoleListCreateView.as_view(), name='role-list-create'),
+    path('roles/<int:pk>', RoleDetailView.as_view(), name='role-detail'),
+    path('permissions', PermissionListView.as_view(), name='permission-list'),
 ]
