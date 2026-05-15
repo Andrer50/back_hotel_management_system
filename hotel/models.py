@@ -106,6 +106,8 @@ class Habitacion(models.Model):
         Sede,
         on_delete=models.CASCADE,
         related_name='habitaciones',
+        null=True,
+        blank=True,
         verbose_name='Sede'
     )
     numero = models.CharField(

@@ -9,7 +9,11 @@ from .views import (
     RoleDetailView,
     PermissionListView,
     UserListView,
-    UserDetailView
+    UserDetailView,
+    HuespedListView,
+    HuespedDetailView,
+    HabitacionListView,
+    HabitacionDetailView
 )
 from .auth_views import MyTokenObtainPairView
 
@@ -20,6 +24,10 @@ urlpatterns = [
     path('profile', UserProfileView.as_view(), name='profile'),
     path('users', UserListView.as_view(), name='user-list'),
     path('users/<int:pk>', UserDetailView.as_view(), name='user-detail'),
+    path('huespedes', HuespedListView.as_view(), name='huesped-list'),
+    path('huespedes/<int:pk>', HuespedDetailView.as_view(), name='huesped-detail'),
+    path('habitaciones', HabitacionListView.as_view(), name='habitacion-list'),
+    path('habitaciones/<int:pk>', HabitacionDetailView.as_view(), name='habitacion-detail'),
     
     # Roles y Permisos
     path('roles', RoleListCreateView.as_view(), name='role-list-create'),

@@ -3,9 +3,95 @@ from django.contrib.auth.models import Group, Permission
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework_simplejwt.views import TokenObtainPairView
-from .models import Usuario
-from .serializers import UsuarioSerializer, RoleSerializer, PermissionSerializer
+from .models import Usuario, Huesped, Habitacion
+from .serializers import UsuarioSerializer, RoleSerializer, PermissionSerializer, HuespedSerializer, HabitacionSerializer
 from .utils import ApiResponse
+
+class HabitacionListView(generics.ListCreateAPIView):
+    queryset = Habitacion.objects.all().order_by('id')
+    serializer_class = HabitacionSerializer
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return ApiResponse.success(data=serializer.data)
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        return ApiResponse.success(
+            data=serializer.data,
+            message="Habitación registrada exitosamente",
+            status_code=status.HTTP_201_CREATED
+        )
+
+class HabitacionDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Habitacion.objects.all().order_by('id')
+    serializer_class = HabitacionSerializer
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return ApiResponse.success(data=serializer.data)
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return ApiResponse.success(data=serializer.data, message="Habitación actualizada exitosamente")
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        return ApiResponse.success(message="Habitación eliminada exitosamente")
+
+class HuespedListView(generics.ListCreateAPIView):
+    queryset = Huesped.objects.all().order_by('id')
+    serializer_class = HuespedSerializer
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return ApiResponse.success(data=serializer.data)
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        return ApiResponse.success(
+            data=serializer.data,
+            message="Huésped registrado exitosamente",
+            status_code=status.HTTP_201_CREATED
+        )
+
+class HuespedDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Huesped.objects.all().order_by('id')
+    serializer_class = HuespedSerializer
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return ApiResponse.success(data=serializer.data)
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return ApiResponse.success(data=serializer.data, message="Huésped actualizado exitosamente")
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        return ApiResponse.success(message="Huésped eliminado exitosamente")
 
 class RegisterView(generics.CreateAPIView):
     queryset = Usuario.objects.all()
