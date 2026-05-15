@@ -194,6 +194,23 @@ class AreaComun(models.Model):
         default=0,
         verbose_name='Aforo actual'
     )
+    imagen = models.ImageField(
+        upload_to='areas/',
+        null=True,
+        blank=True,
+        verbose_name='Imagen del área'
+    )
+    categoria = models.CharField(
+        max_length=50,
+        blank=True,
+        null=True,
+        verbose_name='Categoría'
+    )
+    descripcion = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name='Descripción'
+    )
     estado = models.CharField(
         max_length=20,
         choices=Estado.choices,

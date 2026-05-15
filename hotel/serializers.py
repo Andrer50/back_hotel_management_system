@@ -1,15 +1,23 @@
 from rest_framework import serializers
 from django.contrib.auth.models import Group, Permission
-from .models import Planta, Usuario, Huesped, Habitacion, Sede
-
-class HuespedSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Huesped
-        fields = '__all__'
+from .models import Planta, Usuario, Huesped, Habitacion, Sede, AreaComun
 
 class SedeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Sede
+        fields = '__all__'
+
+class AreaComunSerializer(serializers.ModelSerializer):
+    estado_display = serializers.CharField(source='get_estado_display', read_only=True)
+    sede_details = SedeSerializer(source='sede', read_only=True)
+
+    class Meta:
+        model = AreaComun
+        fields = '__all__'
+
+class HuespedSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Huesped
         fields = '__all__'
 
 class PlantaSerializer(serializers.ModelSerializer):

@@ -15,7 +15,9 @@ from .views import (
     HabitacionListView,
     HabitacionDetailView,
     PlantaListView,
-    PlantaDetailView
+    PlantaDetailView,
+    AreaComunListView,
+    AreaComunDetailView
 )
 from .auth_views import MyTokenObtainPairView
 
@@ -32,6 +34,8 @@ urlpatterns = [
     path('habitaciones/<int:pk>', HabitacionDetailView.as_view(), name='habitacion-detail'),
     path('plantas', PlantaListView.as_view(), name='planta-list'),
     path('plantas/<int:pk>', PlantaDetailView.as_view(), name='planta-detail'),
+    path('areas-comunes', AreaComunListView.as_view(), name='area-comun-list'),
+    path('areas-comunes/<int:pk>', AreaComunDetailView.as_view(), name='area-comun-detail'),
     
     # Roles y Permisos
     path('roles', RoleListCreateView.as_view(), name='role-list-create'),
