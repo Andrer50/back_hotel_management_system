@@ -42,7 +42,7 @@ cd <nombre-del-proyecto>
 python -m venv venv
 
 # Activar — macOS / Linux / Git Bash
-source venv/bin/activate
+source venv/bin/activate  o source venv/Scripts/activate
 
 # Activar — Windows PowerShell
 .\venv\Scripts\Activate.ps1

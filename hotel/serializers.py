@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import Group, Permission
-from .models import Usuario, Huesped, Habitacion, Sede
+from .models import Planta, Usuario, Huesped, Habitacion, Sede
 
 class HuespedSerializer(serializers.ModelSerializer):
     class Meta:
@@ -12,10 +12,16 @@ class SedeSerializer(serializers.ModelSerializer):
         model = Sede
         fields = '__all__'
 
+class PlantaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Planta
+        fields = '__all__'
+
 class HabitacionSerializer(serializers.ModelSerializer):
     tipo_display = serializers.CharField(source='get_tipo_display', read_only=True)
     estado_display = serializers.CharField(source='get_estado_display', read_only=True)
     sede = serializers.PrimaryKeyRelatedField(queryset=Sede.objects.all(), required=False, allow_null=True)
+    planta_details = PlantaSerializer(source='planta', read_only=True)
 
     class Meta:
         model = Habitacion

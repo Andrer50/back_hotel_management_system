@@ -3,9 +3,30 @@ from django.contrib.auth.models import Group, Permission
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework_simplejwt.views import TokenObtainPairView
-from .models import Usuario, Huesped, Habitacion
-from .serializers import UsuarioSerializer, RoleSerializer, PermissionSerializer, HuespedSerializer, HabitacionSerializer
+from .models import Usuario, Huesped, Habitacion, Planta
+from .serializers import UsuarioSerializer, RoleSerializer, PermissionSerializer, HuespedSerializer, HabitacionSerializer, PlantaSerializer
 from .utils import ApiResponse
+
+class PlantaListView(generics.ListCreateAPIView):
+    queryset = Planta.objects.all().order_by('numero')
+    serializer_class = PlantaSerializer
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return ApiResponse.success(data=serializer.data)
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        return ApiResponse.success(data=serializer.data, message="Planta creada exitosamente", status_code=status.HTTP_201_CREATED)
+
+class PlantaDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Planta.objects.all()
+    serializer_class = PlantaSerializer
+    permission_classes = (permissions.IsAuthenticated,)
 
 class HabitacionListView(generics.ListCreateAPIView):
     queryset = Habitacion.objects.all().order_by('id')

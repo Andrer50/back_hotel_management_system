@@ -86,6 +86,21 @@ class Usuario(AbstractUser):
 # MÓDULO B: OPERACIONES (ESPACIOS, LOGÍSTICA Y MANTENIMIENTO)
 # ==============================================================================
 
+class Planta(models.Model):
+    """
+    Representa un piso o planta física del hotel.
+    """
+    nombre = models.CharField(max_length=50, verbose_name='Nombre de la planta') # Ej: "Planta 1", "Ático"
+    numero = models.PositiveIntegerField(unique=True, verbose_name='Número de planta') # Ej: 1, 2, 3
+
+    class Meta:
+        verbose_name = 'Planta'
+        verbose_name_plural = 'Plantas'
+        ordering = ['numero']
+
+    def __str__(self):
+        return self.nombre
+
 class Habitacion(models.Model):
     """
     Representa una habitación física dentro de una sede del hotel.
@@ -109,6 +124,14 @@ class Habitacion(models.Model):
         null=True,
         blank=True,
         verbose_name='Sede'
+    )
+    planta = models.ForeignKey(
+        Planta,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='habitaciones',
+        verbose_name='Planta/Piso'
     )
     numero = models.CharField(
         max_length=10,
@@ -138,10 +161,11 @@ class Habitacion(models.Model):
     class Meta:
         verbose_name = 'Habitación'
         verbose_name_plural = 'Habitaciones'
-        unique_together = ('sede', 'numero')  # El número de habitación es único dentro de cada sede
+        # unique_together = ('sede', 'numero')
 
     def __str__(self):
-        return f"Hab. {self.numero} ({self.get_tipo_display()}) - {self.sede.nombre}"
+        sede_nombre = self.sede.nombre if self.sede else "Sin Sede"
+        return f"Hab. {self.numero} ({self.get_tipo_display()}) - {sede_nombre}"
 
 
 class AreaComun(models.Model):
@@ -281,7 +305,8 @@ class RegistroLimpieza(models.Model):
         ordering = ['-fecha_inicio']
 
     def __str__(self):
-        return f"Limpieza Hab. {self.habitacion.numero} - Sede: {self.habitacion.sede.nombre} ({self.get_estado_display()})"
+        sede_nombre = self.habitacion.sede.nombre if self.habitacion.sede else "Sin Sede"
+        return f"Limpieza Hab. {self.habitacion.numero} - Sede: {sede_nombre} ({self.get_estado_display()})"
 
 
 class Incidencia(models.Model):
@@ -497,7 +522,8 @@ class Reserva(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"Reserva {self.codigo_reserva} | {self.huesped.apellido} (Hab: {self.habitacion.numero} - {self.habitacion.sede.nombre})"
+        sede_nombre = self.habitacion.sede.nombre if self.habitacion.sede else "Sin Sede"
+        return f"Reserva {self.codigo_reserva} | {self.huesped.apellido} (Hab: {self.habitacion.numero} - {sede_nombre})"
 
 
 class Estadia(models.Model):
