@@ -3,9 +3,10 @@ from django.contrib.auth.models import Group, Permission
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework_simplejwt.views import TokenObtainPairView
-from .models import Usuario, Huesped, Habitacion, Planta, AreaComun
-from .serializers import UsuarioSerializer, RoleSerializer, PermissionSerializer, HuespedSerializer, HabitacionSerializer, PlantaSerializer, AreaComunSerializer
+from .models import Usuario, Huesped, Habitacion, Planta, AreaComun, RegistroLimpieza, Incidencia
+from .serializers import UsuarioSerializer, RoleSerializer, PermissionSerializer, HuespedSerializer, HabitacionSerializer, PlantaSerializer, AreaComunSerializer, RegistroLimpiezaSerializer, IncidenciaSerializer, PersonalLimpiezaSerializer
 from .utils import ApiResponse
+from django.utils import timezone
 
 class PlantaListView(generics.ListCreateAPIView):
     queryset = Planta.objects.all().order_by('numero')
@@ -270,3 +271,114 @@ class AreaComunDetailView(generics.RetrieveUpdateDestroyAPIView):
         instance = self.get_object()
         self.perform_destroy(instance)
         return ApiResponse.success(message="Área común eliminada exitosamente")
+
+class RegistroLimpiezaListView(generics.ListCreateAPIView):
+    serializer_class = RegistroLimpiezaSerializer
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def get_queryset(self):
+        # Filtra solo los registros activos (no completados) para el dashboard
+        return RegistroLimpieza.objects.select_related(
+            'habitacion', 'personal_limpieza'
+        ).order_by('-fecha_inicio')
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return ApiResponse.success(data=serializer.data)
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        return ApiResponse.success(
+            data=serializer.data,
+            message="Registro de limpieza creado exitosamente",
+            status_code=status.HTTP_201_CREATED
+        )
+
+
+class RegistroLimpiezaDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = RegistroLimpieza.objects.all()
+    serializer_class = RegistroLimpiezaSerializer
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', True)  # siempre partial
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        
+        nuevo_estado = request.data.get('estado')
+        
+        # Si se completa la limpieza, registrar fecha_fin y poner habitación DISPONIBLE
+        if nuevo_estado in ['COMPLETADO', 'INSPECCIONADO'] and not instance.fecha_fin:
+            serializer.save(fecha_fin=timezone.now())
+            instance.habitacion.estado = 'DISPONIBLE'
+            instance.habitacion.save()
+        else:
+            serializer.save()
+            
+        return ApiResponse.success(
+            data=serializer.data,
+            message="Registro actualizado exitosamente"
+        )
+
+
+class IncidenciaListView(generics.ListCreateAPIView):
+    serializer_class = IncidenciaSerializer
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def get_queryset(self):
+        return Incidencia.objects.select_related(
+            'habitacion', 'asignado_a', 'reportado_por'
+        ).exclude(estado='RESUELTO').order_by('-prioridad', 'fecha_reporte')
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return ApiResponse.success(data=serializer.data)
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        return ApiResponse.success(
+            data=serializer.data,
+            message="Incidencia registrada exitosamente",
+            status_code=status.HTTP_201_CREATED
+        )
+
+
+class IncidenciaDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Incidencia.objects.all()
+    serializer_class = IncidenciaSerializer
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return ApiResponse.success(
+            data=serializer.data,
+            message="Incidencia actualizada exitosamente"
+        )
+        
+        
+class PersonalLimpiezaListView(generics.ListAPIView):
+    serializer_class = PersonalLimpiezaSerializer
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def get_queryset(self):
+        return Usuario.objects.filter(
+            is_active=True,
+            is_superuser=False,
+            role__permissions__codename__in=['can_clean_rooms', 'can_do_maintenance']
+        ).distinct().order_by('first_name')
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return ApiResponse.success(data=serializer.data)
