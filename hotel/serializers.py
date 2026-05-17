@@ -1,6 +1,14 @@
 from rest_framework import serializers
 from django.contrib.auth.models import Group, Permission
-from .models import Planta, Usuario, Huesped, Habitacion, Sede, AreaComun
+from django.contrib.auth import get_user_model
+from datetime import datetime, timedelta  # ← AGREGAR ESTO
+from .models import Planta, Usuario, Huesped, Habitacion, Sede, AreaComun, Reserva  # ← AGREGAR Reserva
+
+User = get_user_model()
+
+# ================================================================
+# SERIALIZERS EXISTENTES (que ya tenía el orquestador)
+# ================================================================
 
 class SedeSerializer(serializers.ModelSerializer):
     class Meta:
@@ -13,11 +21,6 @@ class AreaComunSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = AreaComun
-        fields = '__all__'
-
-class HuespedSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Huesped
         fields = '__all__'
 
 class PlantaSerializer(serializers.ModelSerializer):
@@ -70,8 +73,8 @@ class RoleSerializer(serializers.ModelSerializer):
 
 class UsuarioSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
-    repeatPassword = serializers.CharField(write_only=True, required=False)  # ignorado, solo validación front
-    username = serializers.CharField(required=False)  # se deriva del email si no se envía
+    repeatPassword = serializers.CharField(write_only=True, required=False)
+    username = serializers.CharField(required=False)
 
     firstName = serializers.CharField(source='first_name', required=False)
     lastName = serializers.CharField(source='last_name', required=False)
@@ -89,10 +92,8 @@ class UsuarioSerializer(serializers.ModelSerializer):
         fields = ('id', 'username', 'email', 'password', 'repeatPassword', 'firstName', 'lastName', 'role', 'role_details', 'sede_asignada', 'phone')
 
     def create(self, validated_data):
-        # Descartar campos que son solo del frontend
         validated_data.pop('repeatPassword', None)
 
-        # Extraemos los datos mapeados
         first_name = validated_data.get('first_name', '')
         last_name = validated_data.get('last_name', '')
         telefono = validated_data.get('telefono', '')
@@ -100,11 +101,9 @@ class UsuarioSerializer(serializers.ModelSerializer):
         username = validated_data.get('username')
         role = validated_data.get('role', None)
         
-        # Si no viene username (porque el front envía email), usamos email como username
         if not username and email:
             username = email
 
-        # Asignamos el rol por defecto ADMIN si no se envía ninguno y es el requerimiento
         if not role:
             role, _ = Group.objects.get_or_create(name='Administrador')
 
@@ -119,3 +118,92 @@ class UsuarioSerializer(serializers.ModelSerializer):
             telefono=telefono
         )
         return user
+
+
+# ================================================================
+# RF-09: HUÉSPEDES (VERSIÓN CORRECTA - SOLO UNA VEZ)
+# ================================================================
+
+class HuespedSerializer(serializers.ModelSerializer):
+    nombre_completo = serializers.SerializerMethodField()
+    estado = serializers.SerializerMethodField()
+    ultima_visita = serializers.SerializerMethodField()
+    total_estancias = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Huesped
+        fields = [
+            'id', 'nombre', 'apellido', 'nombre_completo',
+            'tipo_documento', 'documento', 'email', 'telefono',
+            'preferencias_notas', 'estado', 'ultima_visita', 'total_estancias'
+        ]
+    
+    def get_nombre_completo(self, obj):
+        return f"{obj.nombre} {obj.apellido}"
+    
+    def get_estado(self, obj):
+        seis_meses_atras = datetime.now().date() - timedelta(days=180)
+        ultimas_reservas = obj.reservas.filter(fecha_entrada__gte=seis_meses_atras)
+        return "ACTIVO" if ultimas_reservas.exists() else "INACTIVO"
+    
+    def get_ultima_visita(self, obj):
+        ultima_reserva = obj.reservas.filter(
+            estado__in=['COMPLETADA', 'EN_CURSO']
+        ).order_by('-fecha_entrada').first()
+        if ultima_reserva:
+            return ultima_reserva.fecha_entrada.strftime('%d %b, %Y')
+        return None
+    
+    def get_total_estancias(self, obj):
+        return obj.reservas.filter(estado='COMPLETADA').count()
+
+
+# ================================================================
+# RF-10: HABITACIONES (VERSIÓN SIN SEDE - como pidió el equipo)
+# ================================================================
+
+class HabitacionListSerializer(serializers.ModelSerializer):
+    """Serializer para listar habitaciones (sin sede)"""
+    tipo_display = serializers.CharField(source='get_tipo_display', read_only=True)
+    estado_display = serializers.CharField(source='get_estado_display', read_only=True)
+    
+    class Meta:
+        model = Habitacion
+        fields = [
+            'id', 'numero', 'tipo', 'tipo_display', 'capacidad',
+            'precio_base', 'estado', 'estado_display'
+        ]
+
+
+# ================================================================
+# RF-10: RESERVAS
+# ================================================================
+
+class ReservaSerializer(serializers.ModelSerializer):
+    huesped_nombre = serializers.SerializerMethodField()
+    huesped_documento = serializers.CharField(source='huesped.documento', read_only=True)
+    habitacion_numero = serializers.CharField(source='habitacion.numero', read_only=True)
+    estado_display = serializers.CharField(source='get_estado_display', read_only=True)
+    origen_display = serializers.CharField(source='get_origen_display', read_only=True)
+    noches = serializers.SerializerMethodField()
+    total = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Reserva
+        fields = [
+            'id', 'codigo_reserva', 'huesped', 'huesped_nombre', 'huesped_documento',
+            'habitacion', 'habitacion_numero',
+            'fecha_entrada', 'fecha_salida', 'fecha_reserva',
+            'estado', 'estado_display', 'tarifa_aplicada',
+            'origen', 'origen_display', 'noches', 'total'
+        ]
+        read_only_fields = ['codigo_reserva']  
+    
+    def get_huesped_nombre(self, obj):
+        return f"{obj.huesped.nombre} {obj.huesped.apellido}"
+    
+    def get_noches(self, obj):
+        return (obj.fecha_salida - obj.fecha_entrada).days
+    
+    def get_total(self, obj):
+        return float(obj.tarifa_aplicada) * self.get_noches(obj)
