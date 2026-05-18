@@ -5,5 +5,8 @@
     ],
     "python.analysis.venvPath": "c:\\proyectos-u\\back_hotel_management_system",
     "python.venvPath": "c:\\proyectos-u\\back_hotel_management_system",
-    "python.analysis.venv": "venv"
+    "python.analysis.venv": "venv",
+    "cSpell.words": [
+        "Comun"
+    ]
 }

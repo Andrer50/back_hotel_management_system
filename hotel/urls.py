@@ -22,7 +22,8 @@ from .views import (
     RegistroLimpiezaDetailView,
     IncidenciaListView,
     IncidenciaDetailView,
-    PersonalLimpiezaListView
+    PersonalLimpiezaListView,
+    PersonalMantenimientoListView
 )
 from .auth_views import MyTokenObtainPairView
 
@@ -46,6 +47,7 @@ urlpatterns = [
     path('incidencias', IncidenciaListView.as_view(), name='incidencia-list'),
     path('incidencias/<int:pk>', IncidenciaDetailView.as_view(), name='incidencia-detail'),
     path('personal-limpieza', PersonalLimpiezaListView.as_view(), name='personal-limpieza'),
+    path('personal-mantenimiento', PersonalMantenimientoListView.as_view(), name='personal-mantenimiento'),
     
     # Roles y Permisos
     path('roles', RoleListCreateView.as_view(), name='role-list-create'),

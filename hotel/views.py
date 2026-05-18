@@ -330,9 +330,14 @@ class IncidenciaListView(generics.ListCreateAPIView):
     permission_classes = (permissions.IsAuthenticated,)
 
     def get_queryset(self):
-        return Incidencia.objects.select_related(
+        include_resueltas = self.request.query_params.get('include_resueltas', 'false')
+        qs = Incidencia.objects.select_related(
             'habitacion', 'asignado_a', 'reportado_por'
-        ).exclude(estado='RESUELTO').order_by('-prioridad', 'fecha_reporte')
+        ).order_by('-prioridad', 'fecha_reporte')
+        
+        if include_resueltas != 'true':
+            qs = qs.exclude(estado='RESUELTO')
+        return qs
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
@@ -356,17 +361,25 @@ class IncidenciaDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = (permissions.IsAuthenticated,)
 
     def update(self, request, *args, **kwargs):
-        partial = kwargs.pop('partial', False)
+        partial = kwargs.pop('partial', True)
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
+        
+        nuevo_estado = request.data.get('estado')
+        
+        if nuevo_estado == 'RESUELTO' and instance.habitacion:
+            serializer.save(fecha_resolucion=timezone.now())
+            instance.habitacion.estado = 'DISPONIBLE'
+            instance.habitacion.save()
+        else:
+            serializer.save()
+            
         return ApiResponse.success(
             data=serializer.data,
             message="Incidencia actualizada exitosamente"
         )
-        
-        
+
 class PersonalLimpiezaListView(generics.ListAPIView):
     serializer_class = PersonalLimpiezaSerializer
     permission_classes = (permissions.IsAuthenticated,)
@@ -376,6 +389,22 @@ class PersonalLimpiezaListView(generics.ListAPIView):
             is_active=True,
             is_superuser=False,
             role__permissions__codename__in=['can_clean_rooms', 'can_do_maintenance']
+        ).distinct().order_by('first_name')
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return ApiResponse.success(data=serializer.data)
+
+class PersonalMantenimientoListView(generics.ListAPIView):
+    serializer_class = PersonalLimpiezaSerializer
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def get_queryset(self):
+        return Usuario.objects.filter(
+            is_active=True,
+            is_superuser=False,
+            role__permissions__codename='can_do_maintenance'
         ).distinct().order_by('first_name')
 
     def list(self, request, *args, **kwargs):
