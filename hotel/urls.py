@@ -17,7 +17,13 @@ from .views import (
     PlantaListView,
     PlantaDetailView,
     AreaComunListView,
-    AreaComunDetailView
+    AreaComunDetailView,
+    RegistroLimpiezaListView,
+    RegistroLimpiezaDetailView,
+    IncidenciaListView,
+    IncidenciaDetailView,
+    PersonalLimpiezaListView,
+    PersonalMantenimientoListView
 )
 from .auth_views import MyTokenObtainPairView
 
@@ -36,6 +42,12 @@ urlpatterns = [
     path('plantas/<int:pk>', PlantaDetailView.as_view(), name='planta-detail'),
     path('areas-comunes', AreaComunListView.as_view(), name='area-comun-list'),
     path('areas-comunes/<int:pk>', AreaComunDetailView.as_view(), name='area-comun-detail'),
+    path('limpiezas', RegistroLimpiezaListView.as_view(), name='limpieza-list'),
+    path('limpiezas/<int:pk>', RegistroLimpiezaDetailView.as_view(), name='limpieza-detail'),
+    path('incidencias', IncidenciaListView.as_view(), name='incidencia-list'),
+    path('incidencias/<int:pk>', IncidenciaDetailView.as_view(), name='incidencia-detail'),
+    path('personal-limpieza', PersonalLimpiezaListView.as_view(), name='personal-limpieza'),
+    path('personal-mantenimiento', PersonalMantenimientoListView.as_view(), name='personal-mantenimiento'),
     
     # Roles y Permisos
     path('roles', RoleListCreateView.as_view(), name='role-list-create'),

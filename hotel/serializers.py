@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import Group, Permission
-from .models import Planta, Usuario, Huesped, Habitacion, Sede, AreaComun
+from .models import Planta, Usuario, Huesped, Habitacion, Sede, AreaComun, RegistroLimpieza, Incidencia
 
 class SedeSerializer(serializers.ModelSerializer):
     class Meta:
@@ -119,3 +119,66 @@ class UsuarioSerializer(serializers.ModelSerializer):
             telefono=telefono
         )
         return user
+    
+
+class PersonalLimpiezaSerializer(serializers.ModelSerializer):
+    firstName = serializers.CharField(source='first_name')
+    lastName = serializers.CharField(source='last_name')
+
+    class Meta:
+        model = Usuario
+        fields = ('id', 'firstName', 'lastName', 'email', 'username')
+
+class UsuarioResumenSerializer(serializers.ModelSerializer):
+    # Serializer para mostrar nombre en limpiezas/incidencias
+    full_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Usuario
+        fields = ('id', 'full_name')
+
+    def get_full_name(self, obj):
+        return obj.get_full_name() or obj.username
+
+
+class RegistroLimpiezaSerializer(serializers.ModelSerializer):
+    personal_limpieza_details = UsuarioResumenSerializer(
+        source='personal_limpieza', read_only=True
+    )
+    habitacion_numero = serializers.CharField(
+        source='habitacion.numero', read_only=True
+    )
+    estado_display = serializers.CharField(
+        source='get_estado_display', read_only=True
+    )
+    personal_limpieza = serializers.PrimaryKeyRelatedField(
+        queryset=Usuario.objects.filter(is_active=True),
+        required=False,
+        allow_null=True
+    )
+
+    class Meta:
+        model = RegistroLimpieza
+        fields = '__all__'
+
+
+class IncidenciaSerializer(serializers.ModelSerializer):
+    asignado_a_details = UsuarioResumenSerializer(
+        source='asignado_a', read_only=True
+    )
+    reportado_por_details = UsuarioResumenSerializer(
+        source='reportado_por', read_only=True
+    )
+    habitacion_numero = serializers.CharField(
+        source='habitacion.numero', read_only=True
+    )
+    prioridad_display = serializers.CharField(
+        source='get_prioridad_display', read_only=True
+    )
+    estado_display = serializers.CharField(
+        source='get_estado_display', read_only=True
+    )
+
+    class Meta:
+        model = Incidencia
+        fields = '__all__'
