@@ -30,9 +30,15 @@ class PlantaDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = (permissions.IsAuthenticated,)
 
 class HabitacionListView(generics.ListCreateAPIView):
-    queryset = Habitacion.objects.all().order_by('id')
     serializer_class = HabitacionSerializer
     permission_classes = (permissions.IsAuthenticated,)
+
+    def get_queryset(self):
+        queryset = Habitacion.objects.all().order_by('id')
+        disponibles = self.request.query_params.get('disponibles')
+        if disponibles == 'true':
+            queryset = queryset.filter(estado='DISPONIBLE')
+        return queryset
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
@@ -411,3 +417,21 @@ class PersonalMantenimientoListView(generics.ListAPIView):
         queryset = self.get_queryset()
         serializer = self.get_serializer(queryset, many=True)
         return ApiResponse.success(data=serializer.data)
+
+from rest_framework.views import APIView
+
+class SelectDataView(APIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def get(self, request, *args, **kwargs):
+        huespedes = Huesped.objects.all().order_by('nombre')
+        data = {
+            "huespedes": [
+                {
+                    "id": h.id,
+                    "nombre_completo": f"{h.nombre} {h.apellido}",
+                    "documento": h.documento
+                } for h in huespedes
+            ]
+        }
+        return ApiResponse.success(data=data)
