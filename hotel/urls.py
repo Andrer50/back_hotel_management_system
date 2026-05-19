@@ -24,7 +24,10 @@ from .views import (
     IncidenciaDetailView,
     PersonalLimpiezaListView,
     PersonalMantenimientoListView,
-    SelectDataView
+    SelectDataView,
+    ReservaListView,
+    ReservaDetailView,
+    DashboardStatsView
 )
 from .auth_views import MyTokenObtainPairView
 
@@ -50,6 +53,9 @@ urlpatterns = [
     path('personal-limpieza', PersonalLimpiezaListView.as_view(), name='personal-limpieza'),
     path('personal-mantenimiento', PersonalMantenimientoListView.as_view(), name='personal-mantenimiento'),
     path('select-data', SelectDataView.as_view(), name='select-data'),
+    path('reservas', ReservaListView.as_view(), name='reserva-list'),
+    path('reservas/<int:pk>', ReservaDetailView.as_view(), name='reserva-detail'),
+    path('dashboard/stats', DashboardStatsView.as_view(), name='dashboard-stats'),
     
     # Roles y Permisos
     path('roles', RoleListCreateView.as_view(), name='role-list-create'),

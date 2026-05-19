@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import Group, Permission
-from .models import Planta, Usuario, Huesped, Habitacion, Sede, AreaComun, RegistroLimpieza, Incidencia
+from .models import Planta, Usuario, Huesped, Habitacion, Sede, AreaComun, RegistroLimpieza, Incidencia, Reserva
 
 class SedeSerializer(serializers.ModelSerializer):
     class Meta:
@@ -182,3 +182,25 @@ class IncidenciaSerializer(serializers.ModelSerializer):
     class Meta:
         model = Incidencia
         fields = '__all__'
+
+class ReservaSerializer(serializers.ModelSerializer):
+    huesped_nombre = serializers.SerializerMethodField(read_only=True)
+    habitacion_numero = serializers.CharField(source='habitacion.numero', read_only=True)
+    noches = serializers.SerializerMethodField(read_only=True)
+    total = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = Reserva
+        fields = '__all__'
+
+    def get_huesped_nombre(self, obj):
+        return f"{obj.huesped.nombre} {obj.huesped.apellido}"
+
+    def get_noches(self, obj):
+        if obj.fecha_salida and obj.fecha_entrada:
+            diff = (obj.fecha_salida - obj.fecha_entrada).days
+            return max(1, diff)
+        return 1
+
+    def get_total(self, obj):
+        return obj.tarifa_aplicada * self.get_noches(obj)
