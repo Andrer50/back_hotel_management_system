@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import Group, Permission
-from .models import Planta, Usuario, Huesped, Habitacion, Sede, AreaComun, RegistroLimpieza, Incidencia, Reserva
+from .models import Planta, Usuario, Huesped, Habitacion, Sede, AreaComun, RegistroLimpieza, Incidencia, Reserva, Inventario
 
 class SedeSerializer(serializers.ModelSerializer):
     class Meta:
@@ -204,3 +204,10 @@ class ReservaSerializer(serializers.ModelSerializer):
 
     def get_total(self, obj):
         return obj.tarifa_aplicada * self.get_noches(obj)
+
+class InventarioSerializer(serializers.ModelSerializer):
+    sede_details = SedeSerializer(source='sede', read_only=True)
+
+    class Meta:
+        model = Inventario
+        fields = '__all__'
