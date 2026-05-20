@@ -1,13 +1,45 @@
 from django.shortcuts import render
 from django.contrib.auth.models import Group, Permission
+from django.db.models import F, Q
+from django.utils import timezone
 from django.db.models import F
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.views import APIView
+
 from rest_framework_simplejwt.views import TokenObtainPairView
-from .models import Usuario, Huesped, Habitacion, Planta, AreaComun, RegistroLimpieza, Incidencia, Reserva, Inventario
-from .serializers import UsuarioSerializer, RoleSerializer, PermissionSerializer, HuespedSerializer, HabitacionSerializer, PlantaSerializer, AreaComunSerializer, RegistroLimpiezaSerializer, IncidenciaSerializer, PersonalLimpiezaSerializer, ReservaSerializer, InventarioSerializer
+
+from .models import (
+    Usuario,
+    Huesped,
+    Habitacion,
+    Planta,
+    AreaComun,
+    RegistroLimpieza,
+    Incidencia,
+    Reserva,
+    Inventario
+)
+
+from .serializers import (
+    UsuarioSerializer,
+    RoleSerializer,
+    PermissionSerializer,
+    HuespedSerializer,
+    HabitacionSerializer,
+    PlantaSerializer,
+    AreaComunSerializer,
+    RegistroLimpiezaSerializer,
+    IncidenciaSerializer,
+    PersonalLimpiezaSerializer,
+    ReservaSerializer,
+    InventarioSerializer
+)
+
 from .utils import ApiResponse
-from django.utils import timezone
+
+import uuid
 
 class PlantaListView(generics.ListCreateAPIView):
     queryset = Planta.objects.all().order_by('numero')
@@ -30,7 +62,8 @@ class PlantaDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = PlantaSerializer
     permission_classes = (permissions.IsAuthenticated,)
 
-class HabitacionListView(generics.ListCreateAPIView):
+class HabitacionListCreateView(generics.ListCreateAPIView):
+    """Listar y crear habitaciones (VERSIÓN ÚNICA - ELIMINAR DUPLICADO)"""
     serializer_class = HabitacionSerializer
     permission_classes = (permissions.IsAuthenticated,)
 
@@ -79,10 +112,23 @@ class HabitacionDetailView(generics.RetrieveUpdateDestroyAPIView):
         self.perform_destroy(instance)
         return ApiResponse.success(message="Habitación eliminada exitosamente")
 
-class HuespedListView(generics.ListCreateAPIView):
-    queryset = Huesped.objects.all().order_by('id')
+class HuespedListCreateView(generics.ListCreateAPIView):
+    """Listar y crear huéspedes (RF-09)"""
+    queryset = Huesped.objects.all().order_by('-id')
     serializer_class = HuespedSerializer
     permission_classes = (permissions.IsAuthenticated,)
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        search = self.request.query_params.get('search', '')
+        if search:
+            queryset = queryset.filter(
+                Q(nombre__icontains=search) |
+                Q(apellido__icontains=search) |
+                Q(email__icontains=search) |
+                Q(documento__icontains=search)
+            )
+        return queryset
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
@@ -193,8 +239,6 @@ class RoleDetailView(generics.RetrieveUpdateDestroyAPIView):
         return ApiResponse.success(message="Rol eliminado exitosamente")
 
 class PermissionListView(generics.ListAPIView):
-    # Solo mostrar los permisos que hemos creado en Usuario (nuestros custom permissions)
-    # y opcionalmente los demas si es necesario
     queryset = Permission.objects.filter(content_type__model='usuario', codename__startswith='can_')
     serializer_class = PermissionSerializer
     permission_classes = (permissions.IsAuthenticated,)
@@ -203,6 +247,7 @@ class PermissionListView(generics.ListAPIView):
         queryset = self.get_queryset()
         serializer = self.get_serializer(queryset, many=True)
         return ApiResponse.success(data=serializer.data)
+
 class UserListView(generics.ListAPIView):
     queryset = Usuario.objects.all().order_by('id')
     serializer_class = UsuarioSerializer
@@ -561,3 +606,128 @@ class InventarioDetailView(generics.RetrieveUpdateDestroyAPIView):
         instance = self.get_object()
         self.perform_destroy(instance)
         return ApiResponse.success(message="Artículo eliminado exitosamente")
+
+# ================================================================
+# RF-10: RESERVAS
+# ================================================================
+
+class ReservaListCreateView(generics.ListCreateAPIView):
+    """Listar y crear reservas"""
+    queryset = Reserva.objects.select_related(
+        'huesped', 'habitacion'
+    ).all().order_by('-fecha_reserva')
+    serializer_class = ReservaSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        estado = self.request.query_params.get('estado')
+        if estado:
+            queryset = queryset.filter(estado=estado)
+        
+        search = self.request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(
+                Q(codigo_reserva__icontains=search) |
+                Q(huesped__nombre__icontains=search) |
+                Q(huesped__apellido__icontains=search)
+            )
+        return queryset
+    
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        codigo = f"AST-{uuid.uuid4().hex[:6].upper()}"
+        serializer.save(codigo_reserva=codigo)
+        return ApiResponse.success(
+            data=serializer.data,
+            message=f"Reserva {codigo} creada exitosamente",
+            status_code=status.HTTP_201_CREATED
+        )
+class ReservaDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Obtener, actualizar o cancelar una reserva específica"""
+    queryset = Reserva.objects.all()
+    serializer_class = ReservaSerializer
+    permission_classes = [IsAuthenticated]
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return ApiResponse.success(data=serializer.data)
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return ApiResponse.success(
+            data=serializer.data,
+            message="Reserva actualizada exitosamente"
+        )
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.estado = 'CANCELADA'
+        instance.save()
+        return ApiResponse.success(message="Reserva cancelada exitosamente")
+
+# ========== ESTADÍSTICAS (KPIs) ==========
+class DashboardStatsView(APIView):
+    """Estadísticas para el dashboard"""
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        hoy = timezone.now().date()
+        
+        total_huespedes = Huesped.objects.count()
+        reservas_activas = Reserva.objects.filter(estado='EN_CURSO').count()
+        checkins_hoy = Reserva.objects.filter(
+            fecha_entrada=hoy,
+            estado__in=['CONFIRMADA', 'EN_CURSO']
+        ).count()
+        
+        habitaciones_totales = Habitacion.objects.count()
+        habitaciones_ocupadas = Habitacion.objects.filter(estado='OCUPADA').count()
+        ocupacion = round((habitaciones_ocupadas / habitaciones_totales * 100), 1) if habitaciones_totales > 0 else 0
+        
+        return ApiResponse.success(data={
+            'total_huespedes': total_huespedes,
+            'reservas_activas': reservas_activas,
+            'checkins_hoy': checkins_hoy,
+            'ocupacion': ocupacion,
+            'ingresos_mes': 0,
+        })
+
+
+# ========== DATOS PARA SELECTS (combos) ==========
+class SelectDataView(APIView):
+    """Datos para selects del frontend"""
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        huespedes = Huesped.objects.all().order_by('nombre', 'apellido')
+        habitaciones = Habitacion.objects.filter(estado='DISPONIBLE')
+        
+        return ApiResponse.success(data={
+            'huespedes': [
+                {
+                    'id': h.id,
+                    'nombre': h.nombre,
+                    'apellido': h.apellido,
+                    'documento': h.documento,
+                    'nombre_completo': f"{h.nombre} {h.apellido}"
+                }
+                for h in huespedes
+            ],
+            'habitaciones': [
+                {
+                    'id': h.id,
+                    'numero': h.numero,
+                    'precio_base': float(h.precio_base),
+                    'tipo': h.get_tipo_display(),
+                    'capacidad': h.capacidad
+                }
+                for h in habitaciones
+            ]
+        })
