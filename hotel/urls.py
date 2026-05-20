@@ -18,10 +18,18 @@ from .views import (
     PlantaDetailView,
     AreaComunListView,
     AreaComunDetailView,
-    ReservaListCreateView,
-    ReservaDetailView,        
+    RegistroLimpiezaListView,
+    RegistroLimpiezaDetailView,
+    IncidenciaListView,
+    IncidenciaDetailView,
+    PersonalLimpiezaListView,
+    PersonalMantenimientoListView,
+    SelectDataView,
+    ReservaListView,
+    ReservaDetailView,
     DashboardStatsView,
-    SelectDataView
+    InventarioListView,
+    InventarioDetailView
 )
 from .auth_views import MyTokenObtainPairView
 
@@ -56,6 +64,20 @@ urlpatterns = [
     # ========== ÁREAS COMUNES ==========
     path('areas-comunes', AreaComunListView.as_view(), name='area-comun-list'),
     path('areas-comunes/<int:pk>', AreaComunDetailView.as_view(), name='area-comun-detail'),
+    path('limpiezas', RegistroLimpiezaListView.as_view(), name='limpieza-list'),
+    path('limpiezas/<int:pk>', RegistroLimpiezaDetailView.as_view(), name='limpieza-detail'),
+    path('incidencias', IncidenciaListView.as_view(), name='incidencia-list'),
+    path('incidencias/<int:pk>', IncidenciaDetailView.as_view(), name='incidencia-detail'),
+    path('incidencia', IncidenciaListView.as_view(), name='incidencia-list-singular'),
+    path('incidencia/<int:pk>', IncidenciaDetailView.as_view(), name='incidencia-detail-singular'),
+    path('personal-limpieza', PersonalLimpiezaListView.as_view(), name='personal-limpieza'),
+    path('personal-mantenimiento', PersonalMantenimientoListView.as_view(), name='personal-mantenimiento'),
+    path('select-data', SelectDataView.as_view(), name='select-data'),
+    path('reservas', ReservaListView.as_view(), name='reserva-list'),
+    path('reservas/<int:pk>', ReservaDetailView.as_view(), name='reserva-detail'),
+    path('dashboard/stats', DashboardStatsView.as_view(), name='dashboard-stats'),
+    path('inventarios', InventarioListView.as_view(), name='inventario-list'),
+    path('inventarios/<int:pk>', InventarioDetailView.as_view(), name='inventario-detail'),
     
     # ========== RF-10: RESERVAS ==========
     path('reservas', ReservaListCreateView.as_view(), name='reserva-list-create'),

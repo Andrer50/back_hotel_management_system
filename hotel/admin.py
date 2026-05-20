@@ -1,4 +1,5 @@
 from django.contrib import admin
+from .models import Incidencia
 from django.contrib.auth.admin import UserAdmin
 from .models import Usuario, Sede, Habitacion, Huesped, Reserva
 
@@ -27,3 +28,4 @@ class ReservaAdmin(admin.ModelAdmin):
     list_display = ('id', 'codigo_reserva', 'huesped', 'habitacion', 'fecha_entrada', 'fecha_salida', 'estado')
     list_filter = ('estado', 'origen')
     search_fields = ('codigo_reserva',)
+admin.site.register(Incidencia)
