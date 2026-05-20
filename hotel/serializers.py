@@ -169,6 +169,10 @@ class IncidenciaSerializer(serializers.ModelSerializer):
     reportado_por_details = UsuarioResumenSerializer(
         source='reportado_por', read_only=True
     )
+    reportado_por = serializers.PrimaryKeyRelatedField(
+        read_only=True
+    )
+    fecha_reporte = serializers.DateTimeField(read_only=True)
     habitacion_numero = serializers.CharField(
         source='habitacion.numero', read_only=True
     )
@@ -182,6 +186,30 @@ class IncidenciaSerializer(serializers.ModelSerializer):
     class Meta:
         model = Incidencia
         fields = '__all__'
+
+    def validate(self, attrs):
+        habitacion = attrs['habitacion'] if 'habitacion' in attrs else getattr(self.instance, 'habitacion', None)
+        area_comun = attrs['area_comun'] if 'area_comun' in attrs else getattr(self.instance, 'area_comun', None)
+
+        if not habitacion and not area_comun:
+            raise serializers.ValidationError(
+                'Debe especificar una habitacion o un area_comun para la incidencia.'
+            )
+
+        if habitacion and area_comun:
+            raise serializers.ValidationError(
+                'La incidencia solo puede estar asociada a una habitacion o a un area_comun, no a ambas.'
+            )
+
+        asignado_a = attrs.get('asignado_a')
+        if asignado_a is not None:
+            role = getattr(asignado_a, 'role', None)
+            if not role or not role.permissions.filter(codename='can_do_maintenance').exists():
+                raise serializers.ValidationError({
+                    'asignado_a': 'El usuario asignado debe tener permisos de mantenimiento.'
+                })
+
+        return attrs
 
 class ReservaSerializer(serializers.ModelSerializer):
     huesped_nombre = serializers.SerializerMethodField(read_only=True)
