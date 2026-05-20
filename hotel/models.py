@@ -1,5 +1,7 @@
 import uuid
+# pyrefly: ignore [missing-import]
 from django.db import models
+# pyrefly: ignore [missing-import]
 from django.contrib.auth.models import AbstractUser, Group
 
 # ==============================================================================
@@ -232,6 +234,10 @@ class Inventario(models.Model):
     Control de suministros, insumos de limpieza y amenities del hotel.
     Sirve también como catálogo para consumos extra en estadías.
     """
+    class Tipo(models.TextChoices):
+        SUMINISTRO = 'SUMINISTRO', 'Suministro'
+        INVENTARIO = 'INVENTARIO', 'Inventario'
+
     sede = models.ForeignKey(
         Sede,
         on_delete=models.CASCADE,
@@ -260,6 +266,12 @@ class Inventario(models.Model):
         decimal_places=2,
         default=0.00,
         verbose_name='Precio de venta unitario (para cargos extra)'
+    )
+    tipo = models.CharField(
+        max_length=20,
+        choices=Tipo.choices,
+        default=Tipo.SUMINISTRO,
+        verbose_name='Tipo de artículo'
     )
 
     class Meta:
