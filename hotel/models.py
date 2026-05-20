@@ -182,7 +182,9 @@ class AreaComun(models.Model):
     """
     class Estado(models.TextChoices):
         DISPONIBLE = 'DISPONIBLE', 'Disponible'
+        OCUPADA = 'OCUPADA', 'Ocupada'
         MANTENIMIENTO = 'MANTENIMIENTO', 'En Mantenimiento'
+        SUCIA = 'SUCIA', 'Sucia / Limpieza requerida'
         RESTRINGIDO = 'RESTRINGIDO', 'Restringido'
 
     sede = models.ForeignKey(
@@ -224,6 +226,10 @@ class AreaComun(models.Model):
         choices=Estado.choices,
         default=Estado.DISPONIBLE,
         verbose_name='Estado'
+    )
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name='¿Área activa?'
     )
 
     class Meta:
