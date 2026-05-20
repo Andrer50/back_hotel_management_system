@@ -1,13 +1,45 @@
 from django.shortcuts import render
 from django.contrib.auth.models import Group, Permission
+from django.db.models import F, Q
+from django.utils import timezone
+
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
+
 from rest_framework_simplejwt.views import TokenObtainPairView
-from .models import Usuario, Huesped, Habitacion, Planta, AreaComun
-from .serializers import UsuarioSerializer, RoleSerializer, PermissionSerializer, HuespedSerializer, HabitacionSerializer, PlantaSerializer, AreaComunSerializer
+
+from .models import (
+    Usuario,
+    Huesped,
+    Habitacion,
+    Planta,
+    AreaComun,
+    RegistroLimpieza,
+    Incidencia,
+    Reserva,
+    Inventario
+)
+
+from .serializers import (
+    UsuarioSerializer,
+    RoleSerializer,
+    PermissionSerializer,
+    HuespedSerializer,
+    HabitacionSerializer,
+    PlantaSerializer,
+    AreaComunSerializer,
+    RegistroLimpiezaSerializer,
+    IncidenciaSerializer,
+    PersonalLimpiezaSerializer,
+    ReservaSerializer,
+    InventarioSerializer
+)
+
 from .utils import ApiResponse
+
+import uuid
 
 class PlantaListView(generics.ListCreateAPIView):
     queryset = Planta.objects.all().order_by('numero')
