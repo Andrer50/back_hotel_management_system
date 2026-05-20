@@ -160,6 +160,11 @@ class Habitacion(models.Model):
         default=Estado.DISPONIBLE,
         verbose_name='Estado de la habitación'
     )
+    
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name='¿Habitación activa?'
+    )
 
     class Meta:
         verbose_name = 'Habitación'
