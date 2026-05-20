@@ -15,3 +15,7 @@ db.sqlite3
 
 # SO
 .DS_Store
+
+.github
+.vscode
+.idea
