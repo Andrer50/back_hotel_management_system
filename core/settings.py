@@ -4,6 +4,7 @@ Django settings for core project.
 
 import os
 from pathlib import Path
+import dj_database_url
 from dotenv import load_dotenv
 from datetime import timedelta
 
@@ -19,7 +20,7 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-6^razw7tm*&iaxilv@iom4l8&6
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'True').lower() in ('true', '1', 't')
 
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,back-hotel-management-system.onrender.com').split(',')
 
 # Disable automatic slash redirection to avoid 500 on POST requests without trailing slash
 APPEND_SLASH = False
@@ -44,6 +45,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -74,14 +76,11 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 # Database
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('DB_NAME', 'hotel_db'),
-        'USER': os.getenv('DB_USER', 'postgres'),
-        'PASSWORD': os.getenv('DB_PASSWORD', 'postgres'),
-        'HOST': os.getenv('DB_HOST', '127.0.0.1'),
-        'PORT': os.getenv('DB_PORT', '5432'),
-    }
+'default': dj_database_url.config(
+    default=os.getenv('DATABASE_URL'),
+    conn_max_age=600,
+    conn_health_checks=True,
+    )
 }
 
 # Password validation
@@ -149,4 +148,15 @@ SIMPLE_JWT = {
     'ROTATE_REFRESH_TOKENS': False,
     'BLACKLIST_AFTER_ROTATION': True,
     'AUTH_HEADER_TYPES': ('Bearer',),
+}
+
+
+# Configuración para que Whitenoise sirva los estáticos en producción
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
 }
