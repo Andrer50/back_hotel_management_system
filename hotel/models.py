@@ -76,6 +76,7 @@ class Usuario(AbstractUser):
             ("can_manage_inventory", "Can manage inventory"),
             ("can_manage_reservations", "Can manage reservations"),
             ("can_view_reports", "Can view reports"),
+            ("can_manage_rooms", "Can manage rooms"),
         ]
 
     def __str__(self):
