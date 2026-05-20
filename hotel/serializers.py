@@ -130,7 +130,7 @@ class PersonalLimpiezaSerializer(serializers.ModelSerializer):
         fields = ('id', 'firstName', 'lastName', 'email', 'username')
 
 class UsuarioResumenSerializer(serializers.ModelSerializer):
-    # Serializer para mostrar nombre en limpiezas/incidencias
+    # Serializer para mostrar nombre en la parte de limpiezas/incidencias
     full_name = serializers.SerializerMethodField()
 
     class Meta:
