@@ -360,6 +360,9 @@ class IncidenciaListView(generics.ListCreateAPIView):
             status_code=status.HTTP_201_CREATED
         )
 
+    def perform_create(self, serializer):
+        serializer.save(reportado_por=self.request.user)
+
 
 class IncidenciaDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Incidencia.objects.all()
@@ -371,13 +374,21 @@ class IncidenciaDetailView(generics.RetrieveUpdateDestroyAPIView):
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
-        
-        nuevo_estado = request.data.get('estado')
-        
-        if nuevo_estado == 'RESUELTO' and instance.habitacion:
-            serializer.save(fecha_resolucion=timezone.now())
-            instance.habitacion.estado = 'DISPONIBLE'
-            instance.habitacion.save()
+
+        estado_proporcionado = 'estado' in serializer.validated_data
+        nuevo_estado = serializer.validated_data.get('estado')
+        fecha_resolucion = serializer.validated_data.get('fecha_resolucion')
+
+        if estado_proporcionado and nuevo_estado == 'RESUELTO' and instance.habitacion:
+            if fecha_resolucion is None and not instance.fecha_resolucion:
+                serializer.save(fecha_resolucion=timezone.now())
+            else:
+                serializer.save()
+
+            habitacion = serializer.instance.habitacion
+            if habitacion:
+                habitacion.estado = 'DISPONIBLE'
+                habitacion.save()
         else:
             serializer.save()
             
