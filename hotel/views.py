@@ -1,5 +1,6 @@
 from django.shortcuts import render
 from django.contrib.auth.models import Group, Permission
+from django.db.models import F
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework_simplejwt.views import TokenObtainPairView
@@ -509,9 +510,19 @@ class DashboardStatsView(APIView):
         return ApiResponse.success(data=data)
 
 class InventarioListView(generics.ListCreateAPIView):
-    queryset = Inventario.objects.all().order_by('id')
     serializer_class = InventarioSerializer
     permission_classes = (permissions.IsAuthenticated,)
+
+    def get_queryset(self):
+        queryset = Inventario.objects.all().order_by('id')
+        tipo = self.request.query_params.get('tipo')
+        if tipo:
+            queryset = queryset.filter(tipo=tipo.upper())
+        
+        bajo_stock = self.request.query_params.get('bajo_stock')
+        if bajo_stock == 'true':
+            queryset = queryset.filter(stock_actual__lte=F('stock_minimo'))
+        return queryset
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
