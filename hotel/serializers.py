@@ -55,7 +55,6 @@ class AreaComunSerializer(serializers.ModelSerializer):
 
 class HuespedSerializer(serializers.ModelSerializer):
     nombre_completo = serializers.SerializerMethodField()
-    estado = serializers.SerializerMethodField()
     ultima_visita = serializers.SerializerMethodField()
     total_estancias = serializers.SerializerMethodField()
 
@@ -71,22 +70,13 @@ class HuespedSerializer(serializers.ModelSerializer):
             'email',
             'telefono',
             'preferencias_notas',
-            'estado',
+            'status',
             'ultima_visita',
             'total_estancias'
         ]
 
     def get_nombre_completo(self, obj):
         return f"{obj.nombre} {obj.apellido}"
-
-    def get_estado(self, obj):
-        seis_meses_atras = datetime.now().date() - timedelta(days=180)
-
-        ultimas_reservas = obj.reservas.filter(
-            fecha_entrada__gte=seis_meses_atras
-        )
-
-        return "ACTIVO" if ultimas_reservas.exists() else "INACTIVO"
 
     def get_ultima_visita(self, obj):
         ultima_reserva = obj.reservas.filter(
