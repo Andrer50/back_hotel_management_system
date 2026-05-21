@@ -481,6 +481,12 @@ class Huesped(models.Model):
         null=True,
         verbose_name='Preferencias / Notas Especiales'
     )
+    status = models.CharField(
+        max_length=20,
+        choices=[('ACTIVE', 'Activo'), ('INACTIVE', 'Inactivo')],
+        default='ACTIVE',
+        verbose_name='Estado'
+    )
 
     class Meta:
         verbose_name = 'Huésped'
