@@ -64,6 +64,17 @@ class Usuario(AbstractUser):
         null=True,
         verbose_name='Teléfono'
     )
+    status = models.CharField(
+        max_length=20,
+        choices=[('ACTIVE', 'Activo'), ('INACTIVE', 'Inactivo')],
+        default='ACTIVE',
+        verbose_name='Estado registrado'
+    )
+
+    def save(self, *args, **kwargs):
+        # Sincronizamos is_active con nuestro status
+        self.is_active = (self.status == 'ACTIVE')
+        super().save(*args, **kwargs)
 
     class Meta:
         verbose_name = 'Usuario'

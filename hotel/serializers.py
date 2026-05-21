@@ -282,7 +282,8 @@ class UsuarioSerializer(serializers.ModelSerializer):
             'role',
             'role_details',
             'sede_asignada',
-            'phone'
+            'phone',
+            'status'
         )
 
     def create(self, validated_data):
@@ -314,7 +315,8 @@ class UsuarioSerializer(serializers.ModelSerializer):
                 'sede_asignada',
                 None
             ),
-            telefono=telefono
+            telefono=telefono,
+            status=validated_data.get('status', 'ACTIVE')
         )
 
         return user
