@@ -19,7 +19,8 @@ from .models import (
     RegistroLimpieza,
     Incidencia,
     Reserva,
-    Inventario
+    Inventario,
+    ConsumoExtra
 )
 
 from .serializers import (
@@ -731,3 +732,102 @@ class SelectDataView(APIView):
                 for h in habitaciones
             ]
         })
+
+
+import json
+from .gemini_service import GeminiService
+
+class InventarioIAPredictionView(APIView):
+    """
+    Endpoint que analiza el inventario usando Gemini y predice necesidades.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not GeminiService.is_configured():
+            return ApiResponse.error(
+                message="El servicio de Inteligencia Artificial no está configurado o requiere que se asigne la clave GEMINI_API_KEY en el archivo .env.",
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        
+        # Obtener los suministros e insumos del inventario
+        inventarios = Inventario.objects.all()
+        # Formatear datos para la IA
+        data_items = []
+        for item in inventarios:
+            data_items.append({
+                "id": item.id,
+                "nombre": item.nombre,
+                "descripcion": item.descripcion or "",
+                "stock_actual": item.stock_actual,
+                "stock_minimo": item.stock_minimo,
+                "precio_unitario": float(item.precio_unitario),
+                "tipo": item.tipo
+            })
+            
+        try:
+            # Llamar al servicio
+            analisis_str = GeminiService.predict_inventory_needs(data_items)
+            analisis_json = json.loads(analisis_str)
+            return ApiResponse.success(data=analisis_json, message="Análisis de inventario con IA generado exitosamente")
+        except Exception as e:
+            return ApiResponse.error(
+                message=f"Error al generar predicciones de inventario: {str(e)}",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class PromocionesIAView(APIView):
+    """
+    Endpoint que analiza reservas y consumos extras usando Gemini para sugerir promociones.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not GeminiService.is_configured():
+            return ApiResponse.error(
+                message="El servicio de Inteligencia Artificial no está configurado o requiere que se asigne la clave GEMINI_API_KEY en el archivo .env.",
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        # Obtener reservas recientes (ej. últimas 50)
+        reservas = Reserva.objects.select_related('huesped', 'habitacion').order_by('-fecha_reserva')[:50]
+        # Obtener consumos extras recientes (ej. últimos 50)
+        consumos = ConsumoExtra.objects.select_related('inventario').order_by('-fecha_consumo')[:50]
+
+        # Formatear reservas
+        reservas_data = []
+        for r in reservas:
+            reservas_data.append({
+                "codigo": r.codigo_reserva,
+                "habitacion": r.habitacion.numero if r.habitacion else "N/A",
+                "tipo_habitacion": r.habitacion.tipo if r.habitacion else "N/A",
+                "fecha_entrada": str(r.fecha_entrada),
+                "fecha_salida": str(r.fecha_salida),
+                "tarifa_aplicada": float(r.tarifa_aplicada),
+                "origen": r.origen,
+                "estado": r.estado
+            })
+
+        # Formatear consumos
+        consumos_data = []
+        for c in consumos:
+            consumos_data.append({
+                "descripcion": c.descripcion,
+                "cantidad": c.cantidad,
+                "precio_unitario": float(c.precio_unitario),
+                "total": float(c.total),
+                "articulo_inventario": c.inventario.nombre if c.inventario else "N/A",
+                "fecha": str(c.fecha_consumo.date()) if c.fecha_consumo else ""
+            })
+
+        try:
+            # Llamar al servicio
+            analisis_str = GeminiService.analyze_sales_and_promotions(reservas_data, consumos_data)
+            analisis_json = json.loads(analisis_str)
+            return ApiResponse.success(data=analisis_json, message="Análisis de ventas y promociones con IA generado exitosamente")
+        except Exception as e:
+            return ApiResponse.error(
+                message=f"Error al generar análisis de promociones: {str(e)}",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

@@ -29,6 +29,8 @@ from .views import (
     DashboardStatsView,
     InventarioListView,
     InventarioDetailView,
+    InventarioIAPredictionView,
+    PromocionesIAView,
 )
 from .auth_views import MyTokenObtainPairView
 
@@ -87,4 +89,8 @@ urlpatterns = [
     
     # ========== DATOS PARA SELECTS ==========
     path('select-data', SelectDataView.as_view(), name='select-data'),
+    
+    # ========== INTEGRACIÓN GEMINI AI ==========
+    path('inventarios/analisis-ia', InventarioIAPredictionView.as_view(), name='inventario-analisis-ia'),
+    path('promociones/analisis-ia', PromocionesIAView.as_view(), name='promociones-analisis-ia'),
 ]
