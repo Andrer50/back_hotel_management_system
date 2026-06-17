@@ -632,10 +632,13 @@ class Estadia(models.Model):
 
 
 class RegistroAforoAreaComun(models.Model):
-    """
-    Registro detallado de aforo en tiempo real para las áreas comunes de cada sede.
-    Evita la superación de límites de capacidad y asiste en auditorías de aforo.
-    """
+    class Estado(models.TextChoices):
+        PENDIENTE = 'PENDIENTE', 'Pendiente'
+        CONFIRMADA = 'CONFIRMADA', 'Confirmada'
+        EN_CURSO = 'EN_CURSO', 'En Curso'
+        COMPLETADA = 'COMPLETADA', 'Completada'
+        CANCELADA = 'CANCELADA', 'Cancelada'
+
     area_comun = models.ForeignKey(
         AreaComun,
         on_delete=models.CASCADE,
@@ -648,24 +651,48 @@ class RegistroAforoAreaComun(models.Model):
         related_name='registros_aforo',
         verbose_name='Huésped'
     )
-    fecha_ingreso = models.DateTimeField(
-        auto_now_add=True,
-        verbose_name='Fecha y hora de ingreso'
-    )
-    fecha_salida = models.DateTimeField(
-        blank=True,
+    registrado_por = models.ForeignKey(
+        Usuario,
+        on_delete=models.SET_NULL,
         null=True,
-        verbose_name='Fecha y hora de salida'
+        blank=True,
+        related_name='aforos_registrados',
+        verbose_name='Registrado por'
+    )
+    fecha_ingreso_programada = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name='Fecha y hora de ingreso programada'
+    )
+    fecha_salida_programada = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name='Fecha y hora de salida programada'
+    )
+    fecha_ingreso_real = models.DateTimeField(
+        blank=True, null=True,
+        verbose_name='Fecha y hora de ingreso real'
+    )
+    fecha_salida_real = models.DateTimeField(
+        blank=True, null=True,
+        verbose_name='Fecha y hora de salida real'
+    )
+    estado = models.CharField(
+        max_length=20,
+        choices=Estado.choices,
+        default=Estado.PENDIENTE,
+        verbose_name='Estado'
+    )
+    notas = models.TextField(
+        blank=True, null=True,
+        verbose_name='Notas'
     )
 
     class Meta:
         verbose_name = 'Registro de Aforo'
         verbose_name_plural = 'Registros de Aforo'
-        ordering = ['-fecha_ingreso']
+        ordering = ['-fecha_ingreso_programada']
 
     def __str__(self):
-        estado_salida = "En el área" if not self.fecha_salida else f"Salió {self.fecha_salida}"
-        return f"{self.huesped.nombre} en {self.area_comun.nombre} | {estado_salida}"
+        return f"{self.huesped.nombre} en {self.area_comun.nombre} ({self.get_estado_display()})"
 
 
 class ConsumoExtra(models.Model):
