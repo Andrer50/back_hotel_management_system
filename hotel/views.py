@@ -1001,4 +1001,280 @@ class ComprobanteDetailView(generics.RetrieveAPIView):
         instance = self.get_object()
         serializer = self.get_serializer(instance)
         return ApiResponse.success(data=serializer.data)
+
+
+class ComprobantePDFView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk, *args, **kwargs):
+        import io
+        from django.http import HttpResponse
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib import colors
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+
+        try:
+            comprobante = Comprobante.objects.get(pk=pk)
+        except Comprobante.DoesNotExist:
+            return Response({"error": "Comprobante no encontrado"}, status=status.HTTP_404_NOT_FOUND)
+
+        reserva = comprobante.reserva
+        huesped = reserva.huesped
+        habitacion = reserva.habitacion
+
+        # Calculations
+        noches = max(1, (reserva.fecha_salida - reserva.fecha_entrada).days)
+        room_total = float(reserva.tarifa_aplicada) * noches
+        
+        try:
+            estadia = reserva.estadia
+            consumos = estadia.consumos_extra.all()
+        except Exception:
+            consumos = []
+            
+        consumos_total = sum(float(c.cantidad * c.precio_unitario) for c in consumos)
+        
+        total_amount = float(comprobante.monto_total)
+        # Reconstruct the concept that was billed
+        concept = "TODO"
+        if abs(total_amount - room_total) < 0.05 and abs(total_amount - (room_total + consumos_total)) > 0.05:
+            concept = "HABITACION"
+        elif abs(total_amount - consumos_total) < 0.05 and abs(total_amount - (room_total + consumos_total)) > 0.05:
+            concept = "CONSUMOS"
+
+        # Setup Buffer
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=letter,
+            rightMargin=36,
+            leftMargin=36,
+            topMargin=36,
+            bottomMargin=36
+        )
+
+        styles = getSampleStyleSheet()
+        
+        # Custom styles
+        title_style = ParagraphStyle(
+            'InvoiceTitle',
+            parent=styles['Heading1'],
+            fontSize=18,
+            leading=22,
+            textColor=colors.HexColor('#031c46'),
+            fontName='Helvetica-Bold'
+        )
+        
+        subtitle_style = ParagraphStyle(
+            'InvoiceSubtitle',
+            parent=styles['Normal'],
+            fontSize=9,
+            leading=12,
+            textColor=colors.HexColor('#555555'),
+            fontName='Helvetica'
+        )
+        
+        receipt_box_style = ParagraphStyle(
+            'ReceiptBoxText',
+            parent=styles['Normal'],
+            fontSize=11,
+            leading=15,
+            textColor=colors.white,
+            alignment=TA_CENTER,
+            fontName='Helvetica-Bold'
+        )
+
+        body_style = ParagraphStyle(
+            'Body',
+            parent=styles['Normal'],
+            fontSize=9,
+            leading=12,
+            textColor=colors.HexColor('#333333'),
+            fontName='Helvetica'
+        )
+
+        bold_style = ParagraphStyle(
+            'Bold',
+            parent=body_style,
+            fontName='Helvetica-Bold'
+        )
+
+        th_style = ParagraphStyle(
+            'TableHeader',
+            parent=styles['Normal'],
+            fontSize=9,
+            leading=11,
+            textColor=colors.white,
+            fontName='Helvetica-Bold'
+        )
+
+        story = []
+
+        # ----------------- HEADER SECTION -----------------
+        hotel_info = (
+            "<font size=14 color='#031c46'><b>HOTEL ASTURIAS S.A.C</b></font><br/>"
+            "R.U.C. 20492837482<br/>"
+            "Av. Larco 1024, Miraflores - Lima<br/>"
+            "Teléfono: (01) 444-5566 | contacto@hotelasturias.com"
+        )
+        
+        type_str = "BOLETA DE VENTA ELECTRÓNICA" if comprobante.tipo_comprobante == "BOLETA" else "FACTURA ELECTRÓNICA"
+        receipt_badge_text = (
+            f"<font size=11>{type_str}</font><br/>"
+            f"<font size=15><b>N° {comprobante.numero_completo}</b></font>"
+        )
+
+        header_data = [
+            [Paragraph(hotel_info, subtitle_style), Paragraph(receipt_badge_text, receipt_box_style)]
+        ]
+        
+        header_table = Table(header_data, colWidths=[340, 200])
+        header_table.setStyle(TableStyle([
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('BACKGROUND', (1,0), (1,0), colors.HexColor('#031c46')),
+            ('ALIGN', (1,0), (1,0), 'CENTER'),
+            ('BOTTOMPADDING', (1,0), (1,0), 12),
+            ('TOPPADDING', (1,0), (1,0), 12),
+            ('BOX', (1,0), (1,0), 1.5, colors.HexColor('#031c46')),
+        ]))
+        story.append(header_table)
+        story.append(Spacer(1, 20))
+
+        # ----------------- CLIENT & RESERVATION INFO -----------------
+        info_data = [
+            [
+                Paragraph("<b>ADQUIRIENTE:</b>", body_style),
+                Paragraph(comprobante.nombre_cliente, body_style),
+                Paragraph("<b>FECHA EMISIÓN:</b>", body_style),
+                Paragraph(comprobante.fecha_emision.strftime("%d/%m/%Y %H:%M:%S"), body_style),
+            ],
+            [
+                Paragraph("<b>DNI / RUC:</b>", body_style),
+                Paragraph(comprobante.documento_cliente, body_style),
+                Paragraph("<b>MÉTODO PAGO:</b>", body_style),
+                Paragraph(comprobante.get_metodo_pago_display(), body_style),
+            ],
+            [
+                Paragraph("<b>RESERVA:</b>", body_style),
+                Paragraph(reserva.codigo_reserva, body_style),
+                Paragraph("<b>HABITACIÓN:</b>", body_style),
+                Paragraph(f"Hab. {habitacion.numero if habitacion else 'N/A'}", body_style),
+            ],
+        ]
+        
+        info_table = Table(info_data, colWidths=[90, 180, 90, 180])
+        info_table.setStyle(TableStyle([
+            ('VALIGN', (0,0), (-1,-1), 'TOP'),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+            ('TOPPADDING', (0,0), (-1,-1), 6),
+            ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#f8f9fa')),
+            ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#e9ecef')),
+            ('INNERGRID', (0,0), (-1,-1), 0.25, colors.HexColor('#e9ecef')),
+            ('PADDING', (0,0), (-1,-1), 8),
+        ]))
+        story.append(info_table)
+        story.append(Spacer(1, 20))
+
+        # ----------------- ITEMS TABLE -----------------
+        table_data = [
+            [
+                Paragraph("<b>DESCRIPCIÓN</b>", th_style),
+                Paragraph("<b>CANT.</b>", th_style),
+                Paragraph("<b>P. UNITARIO</b>", th_style),
+                Paragraph("<b>TOTAL</b>", th_style)
+            ]
+        ]
+        
+        # 1. Room Stay item
+        if concept in ["HABITACION", "TODO"]:
+            table_data.append([
+                Paragraph(f"Hospedaje Habitación {habitacion.numero if habitacion else 'N/A'} (x{noches} noches)", body_style),
+                Paragraph(str(noches), body_style),
+                Paragraph(f"S/. {float(reserva.tarifa_aplicada):.2f}", body_style),
+                Paragraph(f"S/. {room_total:.2f}", body_style)
+            ])
+            
+        # 2. Consumos items
+        if concept in ["CONSUMOS", "TODO"]:
+            for item in consumos:
+                item_total = float(item.cantidad * item.precio_unitario)
+                table_data.append([
+                    Paragraph(item.descripcion, body_style),
+                    Paragraph(str(item.cantidad), body_style),
+                    Paragraph(f"S/. {float(item.precio_unitario):.2f}", body_style),
+                    Paragraph(f"S/. {item_total:.2f}", body_style)
+                ])
+
+        items_table = Table(table_data, colWidths=[280, 50, 100, 110])
+        items_table.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#031c46')),
+            ('ALIGN', (1,0), (-1,-1), 'RIGHT'),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+            ('TOPPADDING', (0,0), (-1,-1), 8),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#f8f9fa')]),
+            ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#dee2e6')),
+            ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#dee2e6')),
+        ]))
+        story.append(items_table)
+        story.append(Spacer(1, 15))
+
+        # ----------------- TOTALS SECTION -----------------
+        total_val = float(comprobante.monto_total)
+        subtotal_val = total_val / 1.18
+        igv_val = total_val - subtotal_val
+        
+        totals_data = [
+            [Paragraph("<b>SUBTOTAL (SIN IGV)</b>", body_style), Paragraph(f"S/. {subtotal_val:.2f}", bold_style)],
+            [Paragraph("<b>I.G.V. (18%)</b>", body_style), Paragraph(f"S/. {igv_val:.2f}", bold_style)],
+            [Paragraph("<b>TOTAL GENERAL</b>", body_style), Paragraph(f"S/. {total_val:.2f}", bold_style)],
+        ]
+        
+        totals_table = Table(totals_data, colWidths=[130, 100])
+        totals_table.setStyle(TableStyle([
+            ('ALIGN', (0,0), (-1,-1), 'RIGHT'),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+            ('TOPPADDING', (0,0), (-1,-1), 5),
+            ('LINEBELOW', (0,0), (-1,-1), 0.5, colors.HexColor('#e9ecef')),
+            ('BACKGROUND', (0,2), (1,2), colors.HexColor('#ebf3fc')),
+        ]))
+        
+        outer_totals_data = [
+            ["", totals_table]
+        ]
+        outer_totals_table = Table(outer_totals_data, colWidths=[310, 230])
+        outer_totals_table.setStyle(TableStyle([
+            ('VALIGN', (0,0), (-1,-1), 'TOP'),
+            ('ALIGN', (1,0), (1,0), 'RIGHT'),
+        ]))
+        story.append(outer_totals_table)
+        story.append(Spacer(1, 30))
+
+        # ----------------- FOOTER SECTION -----------------
+        footer_text = (
+            "Representación impresa de comprobante electrónico.<br/>"
+            "Autorizado mediante la resolución de SUNAT.<br/>"
+            "<b>¡GRACIAS POR SU PREFERENCIA Y ESPERAMOS VERLE PRONTO EN HOTEL ASTURIAS!</b>"
+        )
+        footer_para = Paragraph(footer_text, ParagraphStyle(
+            'FooterText',
+            parent=styles['Normal'],
+            fontSize=8,
+            leading=11,
+            textColor=colors.HexColor('#777777'),
+            alignment=TA_CENTER
+        ))
+        story.append(footer_para)
+
+        # Build Document
+        doc.build(story)
+        
+        buffer.seek(0)
+        
+        filename = f"{comprobante.numero_completo}.pdf"
+        response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
 

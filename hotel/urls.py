@@ -34,6 +34,7 @@ from .views import (
     ConsumoExtraListCreateView,
     ComprobanteListCreateView,
     ComprobanteDetailView,
+    ComprobantePDFView,
 )
 from .auth_views import MyTokenObtainPairView
 
@@ -55,6 +56,7 @@ urlpatterns = [
     path('consumos-extra', ConsumoExtraListCreateView.as_view(), name='consumo-extra-list-create'),
     path('comprobantes', ComprobanteListCreateView.as_view(), name='comprobante-list-create'),
     path('comprobantes/<int:pk>', ComprobanteDetailView.as_view(), name='comprobante-detail'),
+    path('comprobantes/<int:pk>/pdf', ComprobantePDFView.as_view(), name='comprobante-pdf'),
     
     # ========== RF-09: HUÉSPEDES ==========
     path('huespedes', HuespedListCreateView.as_view(), name='huesped-list'),
