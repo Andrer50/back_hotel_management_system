@@ -915,6 +915,121 @@ class ConsumoExtraListCreateView(generics.ListCreateAPIView):
             status_code=status.HTTP_201_CREATED
         )
 
+# ================================================================
+# CHECK-IN Y CHECK-OUT
+# ================================================================
+
+class CheckInView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, pk):
+        try:
+            reserva = Reserva.objects.select_related('habitacion').get(pk=pk)
+        except Reserva.DoesNotExist:
+            return ApiResponse.error(
+                message="Reserva no encontrada.",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+
+        if reserva.estado not in ['PENDIENTE', 'CONFIRMADA']:
+            return ApiResponse.error(
+                message=f"No se puede hacer check-in. Estado actual: {reserva.get_estado_display()}",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        if Estadia.objects.filter(reserva=reserva).exists():
+            return ApiResponse.error(
+                message="Ya existe una estadía registrada para esta reserva.",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Crear la estadía
+        estadia = Estadia.objects.create(
+            reserva=reserva,
+            fecha_checkin=timezone.now(),
+            registrado_por=request.user,
+            observaciones=request.data.get('observaciones', '')
+        )
+
+        # Actualizar estado de reserva y habitación
+        reserva.estado = 'EN_CURSO'
+        reserva.save()
+
+        habitacion = reserva.habitacion
+        habitacion.estado = 'OCUPADA'
+        habitacion.save()
+
+        return ApiResponse.success(
+            data={
+                "estadia_id": estadia.id,
+                "fecha_checkin": estadia.fecha_checkin,
+                "habitacion": habitacion.numero,
+                "huesped": f"{reserva.huesped.nombre} {reserva.huesped.apellido}",
+            },
+            message=f"Check-in realizado exitosamente. Habitación {habitacion.numero} ahora OCUPADA.",
+            status_code=status.HTTP_201_CREATED
+        )
+
+
+class CheckOutView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, pk):
+        try:
+            reserva = Reserva.objects.select_related('habitacion').get(pk=pk)
+        except Reserva.DoesNotExist:
+            return ApiResponse.error(
+                message="Reserva no encontrada.",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+
+        if reserva.estado != 'EN_CURSO':
+            return ApiResponse.error(
+                message=f"No se puede hacer check-out. Estado actual: {reserva.get_estado_display()}",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            estadia = Estadia.objects.get(reserva=reserva)
+        except Estadia.DoesNotExist:
+            return ApiResponse.error(
+                message="No existe una estadía activa para esta reserva.",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        if estadia.fecha_checkout:
+            return ApiResponse.error(
+                message="El check-out ya fue registrado anteriormente.",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Cerrar la estadía
+        estadia.fecha_checkout = timezone.now()
+        estadia.checkout_registrado_por = request.user
+        estadia.observaciones = request.data.get('observaciones', estadia.observaciones)
+        estadia.save()
+
+        # Actualizar estado de reserva y habitación
+        reserva.estado = 'COMPLETADA'
+        reserva.save()
+
+        habitacion = reserva.habitacion
+        habitacion.estado = 'SUCIA'
+        habitacion.save()
+
+        return ApiResponse.success(
+            data={
+                "estadia_id": estadia.id,
+                "fecha_checkin": estadia.fecha_checkin,
+                "fecha_checkout": estadia.fecha_checkout,
+                "habitacion": habitacion.numero,
+                "huesped": f"{reserva.huesped.nombre} {reserva.huesped.apellido}",
+            },
+            message=f"Check-out realizado. Habitación {habitacion.numero} marcada para limpieza.",
+        )
+
 
 # ================================================================
 # COMPROBANTES
@@ -1277,4 +1392,4 @@ class ComprobantePDFView(APIView):
         response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
-
+
