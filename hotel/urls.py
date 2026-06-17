@@ -31,6 +31,9 @@ from .views import (
     InventarioDetailView,
     InventarioIAPredictionView,
     PromocionesIAView,
+    ConsumoExtraListCreateView,
+    ComprobanteListCreateView,
+    ComprobanteDetailView,
 )
 from .auth_views import MyTokenObtainPairView
 
@@ -49,6 +52,9 @@ urlpatterns = [
     path('roles', RoleListCreateView.as_view(), name='role-list-create'),
     path('roles/<int:pk>', RoleDetailView.as_view(), name='role-detail'),
     path('permissions', PermissionListView.as_view(), name='permission-list'),
+    path('consumos-extra', ConsumoExtraListCreateView.as_view(), name='consumo-extra-list-create'),
+    path('comprobantes', ComprobanteListCreateView.as_view(), name='comprobante-list-create'),
+    path('comprobantes/<int:pk>', ComprobanteDetailView.as_view(), name='comprobante-detail'),
     
     # ========== RF-09: HUÉSPEDES ==========
     path('huespedes', HuespedListCreateView.as_view(), name='huesped-list'),

@@ -2,7 +2,7 @@ from django.shortcuts import render
 from django.contrib.auth.models import Group, Permission
 from django.db.models import F, Q
 from django.utils import timezone
-from django.db.models import F
+from django.db import transaction
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -20,7 +20,9 @@ from .models import (
     Incidencia,
     Reserva,
     Inventario,
-    ConsumoExtra
+    ConsumoExtra,
+    Estadia,
+    Comprobante
 )
 
 from .serializers import (
@@ -35,7 +37,9 @@ from .serializers import (
     IncidenciaSerializer,
     PersonalLimpiezaSerializer,
     ReservaSerializer,
-    InventarioSerializer
+    InventarioSerializer,
+    ConsumoExtraSerializer,
+    ComprobanteSerializer
 )
 
 from .utils import ApiResponse
@@ -830,4 +834,171 @@ class PromocionesIAView(APIView):
             return ApiResponse.error(
                 message=f"Error al generar análisis de promociones: {str(e)}",
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            )
+
+
+# ================================================================
+# CONSUMOS EXTRA
+# ================================================================
+
+class ConsumoExtraListCreateView(generics.ListCreateAPIView):
+    queryset = ConsumoExtra.objects.all().order_by('-fecha_consumo')
+    serializer_class = ConsumoExtraSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        reserva_id = self.request.query_params.get('reserva_id')
+        if reserva_id:
+            queryset = queryset.filter(estadia__reserva_id=reserva_id)
+        return queryset
+
+    @transaction.atomic
+    def create(self, request, *args, **kwargs):
+        reserva_id = request.data.get('reserva')
+        if not reserva_id:
+            return ApiResponse.error(
+                message="Debe especificar el ID de la reserva ('reserva').",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+            
+        try:
+            reserva = Reserva.objects.get(id=reserva_id)
+        except Reserva.DoesNotExist:
+            return ApiResponse.error(
+                message=f"La reserva con ID {reserva_id} no existe.",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+
+        # Buscar o crear la estadía asociada a la reserva
+        try:
+            estadia = Estadia.objects.get(reserva=reserva)
+        except Estadia.DoesNotExist:
+            # Crear estadía automática para poder asociar el consumo
+            estadia = Estadia.objects.create(
+                reserva=reserva,
+                fecha_checkin=timezone.now(),
+                registrado_por=request.user
+            )
+
+        # Clonamos data para poder modificarla antes de pasarla al serializer
+        data = request.data.copy()
+        data['estadia'] = estadia.id
+
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        
+        # Validar y descontar stock del inventario
+        inventario_item = serializer.validated_data.get('inventario')
+        cantidad = serializer.validated_data.get('cantidad', 1)
+        
+        if inventario_item:
+            if inventario_item.stock_actual < cantidad:
+                return ApiResponse.error(
+                    message=f"Stock insuficiente para '{inventario_item.nombre}'. Stock disponible: {inventario_item.stock_actual}",
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Descontar del inventario
+            inventario_item.stock_actual -= cantidad
+            inventario_item.save()
+            
+            # Asignar precio unitario por defecto del inventario si no se envió uno
+            if not serializer.validated_data.get('precio_unitario'):
+                serializer.validated_data['precio_unitario'] = inventario_item.precio_unitario
+
+        self.perform_create(serializer)
+        
+        return ApiResponse.success(
+            data=serializer.data,
+            message="Consumo extra registrado exitosamente",
+            status_code=status.HTTP_201_CREATED
+        )
+
+
+# ================================================================
+# COMPROBANTES
+# ================================================================
+
+class ComprobanteListCreateView(generics.ListCreateAPIView):
+    queryset = Comprobante.objects.all().order_by('-fecha_emision')
+    serializer_class = ComprobanteSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        reserva_id = self.request.query_params.get('reserva_id')
+        if reserva_id:
+            queryset = queryset.filter(reserva_id=reserva_id)
+        return queryset
+
+    @transaction.atomic
+    def create(self, request, *args, **kwargs):
+        reserva_id = request.data.get('reserva')
+        if not reserva_id:
+            return ApiResponse.error(
+                message="Debe especificar el ID de la reserva ('reserva').",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+            
+        try:
+            reserva = Reserva.objects.get(id=reserva_id)
+        except Reserva.DoesNotExist:
+            return ApiResponse.error(
+                message=f"La reserva con ID {reserva_id} no existe.",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+
+        # Check if a Comprobante has already been emitted for this reservation
+        existente = Comprobante.objects.filter(reserva=reserva).first()
+        if existente:
+            serializer = self.get_serializer(existente)
+            return ApiResponse.success(
+                data=serializer.data,
+                message=f"Ya existe un comprobante emitido para esta reserva: {existente.numero_completo}"
+            )
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        comprobante = serializer.save()
+        
+        # Transition reservation and room status if reservation is EN_CURSO
+        if reserva.estado == 'EN_CURSO':
+            reserva.estado = 'COMPLETADA'
+            reserva.save()
+            
+            # Find or create estadia
+            estadia, created = Estadia.objects.get_or_create(
+                reserva=reserva,
+                defaults={
+                    'fecha_checkin': timezone.now(),
+                    'registrado_por': request.user
+                }
+            )
+            estadia.fecha_checkout = timezone.now()
+            estadia.checkout_registrado_por = request.user
+            estadia.save()
+            
+            # Habitacion marked as SUCIA
+            habitacion = reserva.habitacion
+            if habitacion:
+                habitacion.estado = 'SUCIA'
+                habitacion.save()
+
+        return ApiResponse.success(
+            data=serializer.data,
+            message=f"Comprobante {comprobante.numero_completo} emitido exitosamente",
+            status_code=status.HTTP_201_CREATED
+        )
+
+
+class ComprobanteDetailView(generics.RetrieveAPIView):
+    queryset = Comprobante.objects.all()
+    serializer_class = ComprobanteSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return ApiResponse.success(data=serializer.data)
+

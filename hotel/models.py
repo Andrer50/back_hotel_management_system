@@ -718,3 +718,83 @@ class ConsumoExtra(models.Model):
 
     def __str__(self):
         return f"{self.descripcion} (x{self.cantidad}) - Total: S/. {self.total:.2f} - {self.estadia.reserva.huesped.apellido}"
+
+
+class Comprobante(models.Model):
+    class Tipo(models.TextChoices):
+        BOLETA = 'BOLETA', 'Boleta'
+        FACTURA = 'FACTURA', 'Factura'
+        
+    class MetodoPago(models.TextChoices):
+        EFECTIVO = 'EFECTIVO', 'Efectivo'
+        TARJETA = 'TARJETA', 'Tarjeta'
+        TRANSFERENCIA = 'TRANSFERENCIA', 'Transferencia'
+
+    reserva = models.ForeignKey(
+        Reserva,
+        on_delete=models.PROTECT,
+        related_name='comprobantes',
+        verbose_name='Reserva Asociada'
+    )
+    tipo_comprobante = models.CharField(
+        max_length=10,
+        choices=Tipo.choices,
+        verbose_name='Tipo de Comprobante'
+    )
+    serie = models.CharField(
+        max_length=4,
+        verbose_name='Serie'
+    )
+    numero = models.PositiveIntegerField(
+        verbose_name='Número Correlativo'
+    )
+    documento_cliente = models.CharField(
+        max_length=20,
+        verbose_name='Documento del Cliente'
+    )
+    nombre_cliente = models.CharField(
+        max_length=150,
+        verbose_name='Nombre del Cliente'
+    )
+    metodo_pago = models.CharField(
+        max_length=20,
+        choices=MetodoPago.choices,
+        verbose_name='Método de Pago'
+    )
+    monto_total = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        verbose_name='Monto Total'
+    )
+    fecha_emision = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name='Fecha de Emisión'
+    )
+
+    class Meta:
+        unique_together = ('tipo_comprobante', 'serie', 'numero')
+        verbose_name = 'Comprobante de Pago'
+        verbose_name_plural = 'Comprobantes de Pago'
+
+    def save(self, *args, **kwargs):
+        if not self.id:
+            if self.tipo_comprobante == 'BOLETA':
+                self.serie = 'B001'
+            else:
+                self.serie = 'F001'
+            
+            ultimo = Comprobante.objects.filter(
+                tipo_comprobante=self.tipo_comprobante,
+                serie=self.serie
+            ).order_by('-numero').first()
+            
+            self.numero = (ultimo.numero + 1) if ultimo else 1
+            
+        super().save(*args, **kwargs)
+
+    @property
+    def numero_completo(self):
+        return f"{self.serie}-{self.numero:08d}"
+
+    def __str__(self):
+        return f"{self.tipo_comprobante} {self.numero_completo} - S/. {self.monto_total} - Reserva {self.reserva.codigo_reserva}"

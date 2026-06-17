@@ -13,7 +13,9 @@ from .models import (
     RegistroLimpieza,
     Incidencia,
     Reserva,
-    Inventario
+    Inventario,
+    ConsumoExtra,
+    Comprobante
 )
 
 User = get_user_model()
@@ -494,6 +496,7 @@ class ReservaSerializer(serializers.ModelSerializer):
     noches = serializers.SerializerMethodField()
 
     total = serializers.SerializerMethodField()
+    consumos_extra_total = serializers.SerializerMethodField()
 
     class Meta:
         model = Reserva
@@ -515,7 +518,8 @@ class ReservaSerializer(serializers.ModelSerializer):
             'origen',
             'origen_display',
             'noches',
-            'total'
+            'total',
+            'consumos_extra_total'
         ]
 
         read_only_fields = ['codigo_reserva']
@@ -533,6 +537,16 @@ class ReservaSerializer(serializers.ModelSerializer):
     def get_total(self, obj):
         return float(obj.tarifa_aplicada) * self.get_noches(obj)
 
+    def get_consumos_extra_total(self, obj):
+        try:
+            if hasattr(obj, 'estadia') and obj.estadia:
+                return sum(float(c.cantidad * c.precio_unitario) for c in obj.estadia.consumos_extra.all())
+        except Exception:
+            pass
+        return 0.0
+
+
+
 
 # ================================================================
 # INVENTARIO
@@ -547,3 +561,33 @@ class InventarioSerializer(serializers.ModelSerializer):
     class Meta:
         model = Inventario
         fields = '__all__'
+
+
+# ================================================================
+# CONSUMO EXTRA
+# ================================================================
+
+class ConsumoExtraSerializer(serializers.ModelSerializer):
+    inventario_details = InventarioSerializer(
+        source='inventario',
+        read_only=True
+    )
+    total = serializers.ReadOnlyField()
+
+    class Meta:
+        model = ConsumoExtra
+        fields = '__all__'
+
+
+# ================================================================
+# COMPROBANTE
+# ================================================================
+
+class ComprobanteSerializer(serializers.ModelSerializer):
+    numero_completo = serializers.CharField(read_only=True)
+    reserva_codigo = serializers.CharField(source='reserva.codigo_reserva', read_only=True)
+
+    class Meta:
+        model = Comprobante
+        fields = '__all__'
+        read_only_fields = ['serie', 'numero']
