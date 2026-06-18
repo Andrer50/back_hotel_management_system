@@ -3,7 +3,7 @@ from django.contrib.auth.models import Group, Permission
 from django.db.models import F, Q
 from django.utils import timezone
 from django.db import transaction
-from rest_framework import generics, permissions, status
+from rest_framework import generics, permissions, status, viewsets
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
@@ -23,7 +23,8 @@ from .models import (
     ConsumoExtra,
     Estadia,
     Comprobante,
-    RegistroAforoAreaComun
+    RegistroAforoAreaComun,
+    Temporada
 )
 
 from .serializers import (
@@ -40,9 +41,7 @@ from .serializers import (
     ReservaSerializer,
     InventarioSerializer,
     ConsumoExtraSerializer,
-    ComprobanteSerializer,
-    RegistroAforoAreaComun,
-    RegistroAforoSerializer
+    ComprobanteSerializer
 )
 
 from .utils import ApiResponse
@@ -1503,4 +1502,81 @@ class AforoCheckOutView(generics.GenericAPIView):
         return ApiResponse.success(
             data=RegistroAforoSerializer(registro).data,
             message="Check-out realizado exitosamente"
-        )
+        )# ================================================================
+# TEMPORADAS - VISTA LISTAR Y CREAR (APIView)
+# ================================================================
+class TemporadaListCreateView(APIView):
+    permission_classes = [IsAuthenticated]  # Pide Token JWT obligatoriamente
+
+    def get(self, request):
+        queryset = Temporada.objects.all().order_by('fecha_inicio')
+        serializer = TemporadaSerializer(queryset, many=True)
+        return Response({
+            "status": "success",
+            "data": serializer.data
+        }, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        serializer = TemporadaSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({
+                "status": "success",
+                "message": "Temporada dinámica registrada correctamente en el calendario.",
+                "data": serializer.data
+            }, status=status.HTTP_201_CREATED)
+            
+        return Response({
+            "status": "error",
+            "message": "Error en la validación de los rangos de fechas.",
+            "errors": serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+# ================================================================
+# TEMPORADAS - VISTA DETALLE PARA EDITAR Y ELIMINAR (APIView)
+# ================================================================
+class TemporadaDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    # 🔥 NUEVO MÉTODO: Captura el PUT desde Next.js para actualizar la temporada
+    def put(self, request, pk):
+        try:
+            temporada = Temporada.objects.get(pk=pk)
+            
+            # 🚀 METE "partial=True" AQUÍ MI REY (Para que no se queje si faltan campos o si vienen raros)
+            serializer = TemporadaSerializer(temporada, data=request.data, partial=True)
+            
+            if serializer.is_valid():
+                serializer.save()
+                return Response({
+                    "status": "success",
+                    "message": "Temporada actualizada correctamente en el sistema."
+                }, status=status.HTTP_200_OK)
+            
+            # Si sigue fallando por algo, este return te va a escupir la falla exacta en consola
+            return Response({
+                "status": "error",
+                "message": "Datos inválidos",
+                "errors": serializer.errors  # ← Esto te dirá exactamente qué campo llora
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        except Temporada.DoesNotExist:
+            return Response({
+                "status": "error",
+                "message": "La temporada seleccionada no existe."
+            }, status=status.HTTP_404_NOT_FOUND)
+
+    # Tu método delete que ya funcionaba fino se queda intacto abajo
+    def delete(self, request, pk):
+        try:
+            temporada = Temporada.objects.get(pk=pk)
+            temporada.delete()
+            return Response({
+                "status": "success",
+                "message": "Temporada removida del sistema con éxito."
+            }, status=status.HTTP_200_OK)
+        except Temporada.DoesNotExist:
+            return Response({
+                "status": "error",
+                "message": "La temporada seleccionada no existe o ya fue eliminada."
+            }, status=status.HTTP_404_NOT_FOUND)

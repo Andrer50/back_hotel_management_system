@@ -24,7 +24,7 @@ from .views import (
     PersonalMantenimientoListView,
     SelectDataView,
     ReservaListView,
-    ReservaListCreateView,
+    ReservaListCreateView,     
     ReservaDetailView,
     DashboardStatsView,
     InventarioListView,
@@ -35,12 +35,6 @@ from .views import (
     ComprobanteListCreateView,
     ComprobanteDetailView,
     ComprobantePDFView,
-    CheckInView,
-    CheckOutView,
-    RegistroAforoListView,
-    RegistroAforoDetailView,
-    AforoCheckInView,
-    AforoCheckOutView
 )
 from .auth_views import MyTokenObtainPairView
 
@@ -109,9 +103,4 @@ urlpatterns = [
     # ========== INTEGRACIÓN GEMINI AI ==========
     path('inventarios/analisis-ia', InventarioIAPredictionView.as_view(), name='inventario-analisis-ia'),
     path('promociones/analisis-ia', PromocionesIAView.as_view(), name='promociones-analisis-ia'),
-    
-    path('aforos', RegistroAforoListView.as_view(), name='aforo-list'),
-    path('aforos/<int:pk>', RegistroAforoDetailView.as_view(), name='aforo-detail'),
-    path('aforos/<int:pk>/checkin', AforoCheckInView.as_view(), name='aforo-checkin'),
-    path('aforos/<int:pk>/checkout', AforoCheckOutView.as_view(), name='aforo-checkout'),
 ]

@@ -825,3 +825,37 @@ class Comprobante(models.Model):
 
     def __str__(self):
         return f"{self.tipo_comprobante} {self.numero_completo} - S/. {self.monto_total} - Reserva {self.reserva.codigo_reserva}"
+
+# ==============================================================================
+# MÓDULO D: GESTIÓN DE TARIFAS Y PLANIFICACIÓN DINÁMICA
+# ==============================================================================
+
+class Temporada(models.Model):
+    """
+    Representa un rango de fechas especial en el calendario (ej. Año Nuevo, Semana Santa)
+    donde las tarifas base de las habitaciones sufren variaciones por alta demanda.
+    """
+    nombre = models.CharField(
+        max_length=100,
+        verbose_name='Nombre de la temporada / evento'
+    )
+    fecha_inicio = models.DateField(
+        verbose_name='Fecha de Inicio'
+    )
+    fecha_fin = models.DateField(
+        verbose_name='Fecha de Finalización'
+    )
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name='¿Temporada activa?'
+    )
+
+    class Meta:
+        verbose_name = 'Temporada Dinámica'
+        verbose_name_plural = 'Temporadas Dinámicas'
+        ordering = ['fecha_inicio']
+
+    def __str__(self):
+        return f"{self.nombre} ({self.fecha_inicio} al {self.fecha_fin})"
+    
+    porcentaje = models.IntegerField(default=0, help_text="Porcentaje de variación")
