@@ -23,6 +23,7 @@ from .models import (
     ConsumoExtra,
     Estadia,
     Comprobante,
+    RegistroAforoAreaComun,
     Temporada
 )
 
@@ -40,8 +41,7 @@ from .serializers import (
     ReservaSerializer,
     InventarioSerializer,
     ConsumoExtraSerializer,
-    ComprobanteSerializer,
-    TemporadaSerializer
+    ComprobanteSerializer
 )
 
 from .utils import ApiResponse
@@ -917,6 +917,121 @@ class ConsumoExtraListCreateView(generics.ListCreateAPIView):
             status_code=status.HTTP_201_CREATED
         )
 
+# ================================================================
+# CHECK-IN Y CHECK-OUT
+# ================================================================
+
+class CheckInView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, pk):
+        try:
+            reserva = Reserva.objects.select_related('habitacion').get(pk=pk)
+        except Reserva.DoesNotExist:
+            return ApiResponse.error(
+                message="Reserva no encontrada.",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+
+        if reserva.estado not in ['PENDIENTE', 'CONFIRMADA']:
+            return ApiResponse.error(
+                message=f"No se puede hacer check-in. Estado actual: {reserva.get_estado_display()}",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        if Estadia.objects.filter(reserva=reserva).exists():
+            return ApiResponse.error(
+                message="Ya existe una estadía registrada para esta reserva.",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Crear la estadía
+        estadia = Estadia.objects.create(
+            reserva=reserva,
+            fecha_checkin=timezone.now(),
+            registrado_por=request.user,
+            observaciones=request.data.get('observaciones', '')
+        )
+
+        # Actualizar estado de reserva y habitación
+        reserva.estado = 'EN_CURSO'
+        reserva.save()
+
+        habitacion = reserva.habitacion
+        habitacion.estado = 'OCUPADA'
+        habitacion.save()
+
+        return ApiResponse.success(
+            data={
+                "estadia_id": estadia.id,
+                "fecha_checkin": estadia.fecha_checkin,
+                "habitacion": habitacion.numero,
+                "huesped": f"{reserva.huesped.nombre} {reserva.huesped.apellido}",
+            },
+            message=f"Check-in realizado exitosamente. Habitación {habitacion.numero} ahora OCUPADA.",
+            status_code=status.HTTP_201_CREATED
+        )
+
+
+class CheckOutView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, pk):
+        try:
+            reserva = Reserva.objects.select_related('habitacion').get(pk=pk)
+        except Reserva.DoesNotExist:
+            return ApiResponse.error(
+                message="Reserva no encontrada.",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+
+        if reserva.estado != 'EN_CURSO':
+            return ApiResponse.error(
+                message=f"No se puede hacer check-out. Estado actual: {reserva.get_estado_display()}",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            estadia = Estadia.objects.get(reserva=reserva)
+        except Estadia.DoesNotExist:
+            return ApiResponse.error(
+                message="No existe una estadía activa para esta reserva.",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        if estadia.fecha_checkout:
+            return ApiResponse.error(
+                message="El check-out ya fue registrado anteriormente.",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Cerrar la estadía
+        estadia.fecha_checkout = timezone.now()
+        estadia.checkout_registrado_por = request.user
+        estadia.observaciones = request.data.get('observaciones', estadia.observaciones)
+        estadia.save()
+
+        # Actualizar estado de reserva y habitación
+        reserva.estado = 'COMPLETADA'
+        reserva.save()
+
+        habitacion = reserva.habitacion
+        habitacion.estado = 'SUCIA'
+        habitacion.save()
+
+        return ApiResponse.success(
+            data={
+                "estadia_id": estadia.id,
+                "fecha_checkin": estadia.fecha_checkin,
+                "fecha_checkout": estadia.fecha_checkout,
+                "habitacion": habitacion.numero,
+                "huesped": f"{reserva.huesped.nombre} {reserva.huesped.apellido}",
+            },
+            message=f"Check-out realizado. Habitación {habitacion.numero} marcada para limpieza.",
+        )
+
 
 # ================================================================
 # COMPROBANTES
@@ -1280,7 +1395,114 @@ class ComprobantePDFView(APIView):
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
 
-# ================================================================
+
+class RegistroAforoListView(generics.ListCreateAPIView):
+    serializer_class = RegistroAforoSerializer
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def get_queryset(self):
+        qs = RegistroAforoAreaComun.objects.select_related(
+            'huesped', 'area_comun', 'registrado_por'
+        ).order_by('-fecha_ingreso_programada')
+        area_id = self.request.query_params.get('area_comun')
+        if area_id:
+            qs = qs.filter(area_comun_id=area_id)
+        return qs
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return ApiResponse.success(data=serializer.data)
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(registrado_por=request.user)
+        return ApiResponse.success(
+            data=serializer.data,
+            message="Reserva de aforo creada exitosamente",
+            status_code=status.HTTP_201_CREATED
+        )
+
+
+class RegistroAforoDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = RegistroAforoAreaComun.objects.all()
+    serializer_class = RegistroAforoSerializer
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', True)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return ApiResponse.success(
+            data=serializer.data,
+            message="Reserva actualizada exitosamente"
+        )
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        return ApiResponse.success(message="Reserva eliminada exitosamente")
+
+
+class AforoCheckInView(generics.GenericAPIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def post(self, request, pk):
+        try:
+            registro = RegistroAforoAreaComun.objects.select_related('area_comun').get(pk=pk)
+        except RegistroAforoAreaComun.DoesNotExist:
+            return ApiResponse.error(message="Registro no encontrado", status_code=404)
+
+        if registro.estado not in ['PENDIENTE', 'CONFIRMADA']:
+            return ApiResponse.error(message="Solo se puede hacer check-in desde estado Pendiente o Confirmada")
+
+        area = registro.area_comun
+        if area.aforo_actual >= area.capacidad_maxima:
+            return ApiResponse.error(
+                message=f"Aforo máximo alcanzado ({area.capacidad_maxima} personas)"
+            )
+
+        registro.estado = 'EN_CURSO'
+        registro.fecha_ingreso_real = timezone.now()
+        registro.save()
+
+        area.aforo_actual += 1
+        area.save()
+
+        return ApiResponse.success(
+            data=RegistroAforoSerializer(registro).data,
+            message="Check-in realizado exitosamente"
+        )
+
+
+class AforoCheckOutView(generics.GenericAPIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def post(self, request, pk):
+        try:
+            registro = RegistroAforoAreaComun.objects.select_related('area_comun').get(pk=pk)
+        except RegistroAforoAreaComun.DoesNotExist:
+            return ApiResponse.error(message="Registro no encontrado", status_code=404)
+
+        if registro.estado != 'EN_CURSO':
+            return ApiResponse.error(message="Solo se puede hacer check-out desde estado En Curso")
+
+        registro.estado = 'COMPLETADA'
+        registro.fecha_salida_real = timezone.now()
+        registro.save()
+
+        area = registro.area_comun
+        if area.aforo_actual > 0:
+            area.aforo_actual -= 1
+            area.save()
+
+        return ApiResponse.success(
+            data=RegistroAforoSerializer(registro).data,
+            message="Check-out realizado exitosamente"
+        )# ================================================================
 # TEMPORADAS - VISTA LISTAR Y CREAR (APIView)
 # ================================================================
 class TemporadaListCreateView(APIView):

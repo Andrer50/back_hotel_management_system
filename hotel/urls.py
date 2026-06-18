@@ -35,8 +35,6 @@ from .views import (
     ComprobanteListCreateView,
     ComprobanteDetailView,
     ComprobantePDFView,
-    TemporadaListCreateView,  
-    TemporadaDetailView,
 )
 from .auth_views import MyTokenObtainPairView
 
@@ -60,11 +58,11 @@ urlpatterns = [
     path('comprobantes/<int:pk>', ComprobanteDetailView.as_view(), name='comprobante-detail'),
     path('comprobantes/<int:pk>/pdf', ComprobantePDFView.as_view(), name='comprobante-pdf'),
     
-    # ========== RF-09: HUÉSPEDES ==========
+    # ========== HUÉSPEDES ==========
     path('huespedes', HuespedListCreateView.as_view(), name='huesped-list'),
     path('huespedes/<int:pk>', HuespedDetailView.as_view(), name='huesped-detail'),
     
-    # ========== RF-10: HABITACIONES ==========
+    # ========== HABITACIONES ==========
     path('habitaciones', HabitacionListCreateView.as_view(), name='habitacion-list'),
     path('habitaciones/<int:pk>', HabitacionDetailView.as_view(), name='habitacion-detail'),
     
@@ -90,9 +88,11 @@ urlpatterns = [
     path('inventarios', InventarioListView.as_view(), name='inventario-list'),
     path('inventarios/<int:pk>', InventarioDetailView.as_view(), name='inventario-detail'),
     
-    # ========== RF-10: RESERVAS ==========
+    # ========== RESERVAS ==========
     path('reservas', ReservaListCreateView.as_view(), name='reserva-list-create'),
-    path('reservas/<int:pk>', ReservaDetailView.as_view(), name='reserva-detail'),  # ← AGREGAR ESTA LÍNEA
+    path('reservas/<int:pk>', ReservaDetailView.as_view(), name='reserva-detail'),
+    path('reservas/<int:pk>/checkin', CheckInView.as_view(), name='reserva-checkin'),
+    path('reservas/<int:pk>/checkout', CheckOutView.as_view(), name='reserva-checkout'),
     
     # ========== ESTADÍSTICAS ==========
     path('dashboard/stats', DashboardStatsView.as_view(), name='dashboard-stats'),
@@ -103,8 +103,4 @@ urlpatterns = [
     # ========== INTEGRACIÓN GEMINI AI ==========
     path('inventarios/analisis-ia', InventarioIAPredictionView.as_view(), name='inventario-analisis-ia'),
     path('promociones/analisis-ia', PromocionesIAView.as_view(), name='promociones-analisis-ia'),
-    
-    # ========== REQUERIMIENTO 17: TEMPORADAS Y TARIFAS ==========
-    path('temporadas', TemporadaListCreateView.as_view(), name='temporada-list-create'),
-    path('temporadas/<int:pk>', TemporadaDetailView.as_view(), name='temporada-detail'),
 ]

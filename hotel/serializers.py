@@ -16,6 +16,7 @@ from .models import (
     Inventario,
     ConsumoExtra,
     Comprobante,
+    RegistroAforoAreaComun,
     Temporada
 )
 
@@ -593,6 +594,53 @@ class ComprobanteSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ['serie', 'numero']
 
+
+# ================================================================
+# RESERVA AREAS COMUNES
+# ================================================================
+
+class RegistroAforoResumenSerializer(serializers.ModelSerializer):
+    nombre_completo = serializers.SerializerMethodField()
+    def get_nombre_completo(self, obj):
+        return f"{obj.nombre} {obj.apellido}"
+    class Meta:
+        model = Huesped
+        fields = ('id', 'nombre_completo', 'documento')
+
+class RegistroAforoSerializer(serializers.ModelSerializer):
+    huesped_details = RegistroAforoResumenSerializer(
+        source='huesped', read_only=True
+    )
+    area_comun_nombre = serializers.CharField(
+        source='area_comun.nombre', read_only=True
+    )
+    area_comun_capacidad = serializers.IntegerField(
+        source='area_comun.capacidad_maxima', read_only=True
+    )
+    estado_display = serializers.CharField(
+        source='get_estado_display', read_only=True
+    )
+    registrado_por_nombre = serializers.SerializerMethodField()
+
+    def get_registrado_por_nombre(self, obj):
+        if obj.registrado_por:
+            return obj.registrado_por.get_full_name() or obj.registrado_por.username
+        return None
+
+    class Meta:
+        model = RegistroAforoAreaComun
+        fields = '__all__'
+
+    def validate(self, attrs):
+        area = attrs.get('area_comun') or (self.instance.area_comun if self.instance else None)
+        fecha_ingreso = attrs.get('fecha_ingreso_programada')
+        fecha_salida = attrs.get('fecha_salida_programada')
+
+        if fecha_ingreso and fecha_salida and fecha_salida <= fecha_ingreso:
+            raise serializers.ValidationError(
+                'La fecha de salida debe ser posterior a la de ingreso.'
+            )
+        return attrs
 # ================================================================
 # TEMPORADAS (TARIFAS DINÁMICAS)
 # ================================================================
