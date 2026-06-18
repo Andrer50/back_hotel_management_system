@@ -22,7 +22,8 @@ from .models import (
     Inventario,
     ConsumoExtra,
     Estadia,
-    Comprobante
+    Comprobante,
+    RegistroAforoAreaComun
 )
 
 from .serializers import (
@@ -39,7 +40,9 @@ from .serializers import (
     ReservaSerializer,
     InventarioSerializer,
     ConsumoExtraSerializer,
-    ComprobanteSerializer
+    ComprobanteSerializer,
+    RegistroAforoAreaComun,
+    RegistroAforoSerializer
 )
 
 from .utils import ApiResponse
@@ -1393,3 +1396,111 @@ class ComprobantePDFView(APIView):
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
 
+
+class RegistroAforoListView(generics.ListCreateAPIView):
+    serializer_class = RegistroAforoSerializer
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def get_queryset(self):
+        qs = RegistroAforoAreaComun.objects.select_related(
+            'huesped', 'area_comun', 'registrado_por'
+        ).order_by('-fecha_ingreso_programada')
+        area_id = self.request.query_params.get('area_comun')
+        if area_id:
+            qs = qs.filter(area_comun_id=area_id)
+        return qs
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return ApiResponse.success(data=serializer.data)
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(registrado_por=request.user)
+        return ApiResponse.success(
+            data=serializer.data,
+            message="Reserva de aforo creada exitosamente",
+            status_code=status.HTTP_201_CREATED
+        )
+
+
+class RegistroAforoDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = RegistroAforoAreaComun.objects.all()
+    serializer_class = RegistroAforoSerializer
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', True)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return ApiResponse.success(
+            data=serializer.data,
+            message="Reserva actualizada exitosamente"
+        )
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        return ApiResponse.success(message="Reserva eliminada exitosamente")
+
+
+class AforoCheckInView(generics.GenericAPIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def post(self, request, pk):
+        try:
+            registro = RegistroAforoAreaComun.objects.select_related('area_comun').get(pk=pk)
+        except RegistroAforoAreaComun.DoesNotExist:
+            return ApiResponse.error(message="Registro no encontrado", status_code=404)
+
+        if registro.estado not in ['PENDIENTE', 'CONFIRMADA']:
+            return ApiResponse.error(message="Solo se puede hacer check-in desde estado Pendiente o Confirmada")
+
+        area = registro.area_comun
+        if area.aforo_actual >= area.capacidad_maxima:
+            return ApiResponse.error(
+                message=f"Aforo máximo alcanzado ({area.capacidad_maxima} personas)"
+            )
+
+        registro.estado = 'EN_CURSO'
+        registro.fecha_ingreso_real = timezone.now()
+        registro.save()
+
+        area.aforo_actual += 1
+        area.save()
+
+        return ApiResponse.success(
+            data=RegistroAforoSerializer(registro).data,
+            message="Check-in realizado exitosamente"
+        )
+
+
+class AforoCheckOutView(generics.GenericAPIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def post(self, request, pk):
+        try:
+            registro = RegistroAforoAreaComun.objects.select_related('area_comun').get(pk=pk)
+        except RegistroAforoAreaComun.DoesNotExist:
+            return ApiResponse.error(message="Registro no encontrado", status_code=404)
+
+        if registro.estado != 'EN_CURSO':
+            return ApiResponse.error(message="Solo se puede hacer check-out desde estado En Curso")
+
+        registro.estado = 'COMPLETADA'
+        registro.fecha_salida_real = timezone.now()
+        registro.save()
+
+        area = registro.area_comun
+        if area.aforo_actual > 0:
+            area.aforo_actual -= 1
+            area.save()
+
+        return ApiResponse.success(
+            data=RegistroAforoSerializer(registro).data,
+            message="Check-out realizado exitosamente"
+        )
