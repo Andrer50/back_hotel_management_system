@@ -41,7 +41,9 @@ from .serializers import (
     ReservaSerializer,
     InventarioSerializer,
     ConsumoExtraSerializer,
-    ComprobanteSerializer
+    ComprobanteSerializer,
+    RegistroAforoSerializer,  
+    TemporadaSerializer
 )
 
 from .utils import ApiResponse
@@ -1502,11 +1504,12 @@ class AforoCheckOutView(generics.GenericAPIView):
         return ApiResponse.success(
             data=RegistroAforoSerializer(registro).data,
             message="Check-out realizado exitosamente"
-        )# ================================================================
-# TEMPORADAS - VISTA LISTAR Y CREAR (APIView)
+        )
 # ================================================================
-class TemporadaListCreateView(APIView):
-    permission_classes = [IsAuthenticated]  # Pide Token JWT obligatoriamente
+# TEMPORADAS - VISTA LISTAR Y CREAR (Sincronizado con URLs)
+# ================================================================
+class TemporadaListView(APIView):
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         queryset = Temporada.objects.all().order_by('fecha_inicio')
@@ -1538,14 +1541,10 @@ class TemporadaListCreateView(APIView):
 class TemporadaDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
-    # 🔥 NUEVO MÉTODO: Captura el PUT desde Next.js para actualizar la temporada
     def put(self, request, pk):
         try:
             temporada = Temporada.objects.get(pk=pk)
-            
-            # 🚀 METE "partial=True" AQUÍ MI REY (Para que no se queje si faltan campos o si vienen raros)
             serializer = TemporadaSerializer(temporada, data=request.data, partial=True)
-            
             if serializer.is_valid():
                 serializer.save()
                 return Response({
@@ -1553,11 +1552,10 @@ class TemporadaDetailView(APIView):
                     "message": "Temporada actualizada correctamente en el sistema."
                 }, status=status.HTTP_200_OK)
             
-            # Si sigue fallando por algo, este return te va a escupir la falla exacta en consola
             return Response({
                 "status": "error",
                 "message": "Datos inválidos",
-                "errors": serializer.errors  # ← Esto te dirá exactamente qué campo llora
+                "errors": serializer.errors
             }, status=status.HTTP_400_BAD_REQUEST)
 
         except Temporada.DoesNotExist:
@@ -1566,7 +1564,6 @@ class TemporadaDetailView(APIView):
                 "message": "La temporada seleccionada no existe."
             }, status=status.HTTP_404_NOT_FOUND)
 
-    # Tu método delete que ya funcionaba fino se queda intacto abajo
     def delete(self, request, pk):
         try:
             temporada = Temporada.objects.get(pk=pk)
