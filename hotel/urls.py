@@ -24,7 +24,7 @@ from .views import (
     PersonalMantenimientoListView,
     SelectDataView,
     ReservaListView,
-    ReservaListCreateView,      # ← AGREGAR ESTA
+    ReservaListCreateView,     
     ReservaDetailView,
     DashboardStatsView,
     InventarioListView,
@@ -35,6 +35,8 @@ from .views import (
     ComprobanteListCreateView,
     ComprobanteDetailView,
     ComprobantePDFView,
+    TemporadaListCreateView,  
+    TemporadaDetailView,
 )
 from .auth_views import MyTokenObtainPairView
 
@@ -101,4 +103,8 @@ urlpatterns = [
     # ========== INTEGRACIÓN GEMINI AI ==========
     path('inventarios/analisis-ia', InventarioIAPredictionView.as_view(), name='inventario-analisis-ia'),
     path('promociones/analisis-ia', PromocionesIAView.as_view(), name='promociones-analisis-ia'),
+    
+    # ========== REQUERIMIENTO 17: TEMPORADAS Y TARIFAS ==========
+    path('temporadas', TemporadaListCreateView.as_view(), name='temporada-list-create'),
+    path('temporadas/<int:pk>', TemporadaDetailView.as_view(), name='temporada-detail'),
 ]

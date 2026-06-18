@@ -15,7 +15,8 @@ from .models import (
     Reserva,
     Inventario,
     ConsumoExtra,
-    Comprobante
+    Comprobante,
+    Temporada
 )
 
 User = get_user_model()
@@ -590,4 +591,43 @@ class ComprobanteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Comprobante
         fields = '__all__'
-        read_only_fields = ['serie', 'numero']
+        read_only_fields = ['serie', 'numero']
+
+# ================================================================
+# TEMPORADAS (TARIFAS DINÁMICAS)
+# ================================================================
+
+class TemporadaSerializer(serializers.ModelSerializer):
+    fecha_inicio_formateada = serializers.SerializerMethodField()
+    fecha_fin_formateada = serializers.SerializerMethodField()
+    estado_label = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Temporada  # Este modelo lo crearemos en el models.py en el siguiente paso
+        fields = [
+            'id',
+            'nombre',
+            'fecha_inicio',
+            'fecha_fin',
+            'porcentaje',
+            'fecha_inicio_formateada',
+            'fecha_fin_formateada',
+            'is_active',
+            'estado_label'
+        ]
+
+    def get_fecha_inicio_formateada(self, obj):
+        if obj.fecha_inicio:
+            # Formatea la fecha de inicio de forma elegante (Ej: "28 Jul, 2026")
+            return obj.fecha_inicio.strftime('%d %b, %Y')
+        return None
+
+    def get_fecha_fin_formateada(self, obj):
+        if obj.fecha_fin:
+            # Formatea la fecha de fin de forma elegante (Ej: "31 Jul, 2026")
+            return obj.fecha_fin.strftime('%d %b, %Y')
+        return None
+
+    def get_estado_label(self, obj):
+        # Genera el label dinámico que espera la insignia (badge) en Next.js
+        return "Activa" if obj.is_active else "Inactiva"
