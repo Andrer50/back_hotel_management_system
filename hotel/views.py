@@ -1,3 +1,4 @@
+from django.db import models
 from django.shortcuts import render
 from django.contrib.auth.models import Group, Permission
 from django.db.models import F, Q
@@ -1577,3 +1578,98 @@ class TemporadaDetailView(APIView):
                 "status": "error",
                 "message": "La temporada seleccionada no existe o ya fue eliminada."
             }, status=status.HTTP_404_NOT_FOUND)
+            
+# ================================================================
+# CHATBOT INTERNO — RF21|IA
+# ================================================================
+
+class ChatbotStaffView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if not GeminiService.is_configured():
+            return ApiResponse.error(
+                message="El servicio de IA no está configurado.",
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        mensaje = request.data.get('mensaje', '').strip()
+        historial = request.data.get('historial', [])  # [{ role, text }]
+
+        if not mensaje:
+            return ApiResponse.error(
+                message="El mensaje no puede estar vacío.",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        # ── Extraer rol y permisos del usuario autenticado (desde el JWT) ──
+        user = request.user
+        role_name = user.role.name if user.role else None
+        permissions = list(
+            user.role.permissions.values_list('codename', flat=True)
+        ) if user.role else []
+
+        # ── Construir contexto operativo anónimo según permisos ────────────
+        contexto = {}
+
+        if 'can_manage_reservations' in permissions:
+            hoy = timezone.now().date()
+            contexto['reservas_pendientes_hoy'] = Reserva.objects.filter(
+                fecha_entrada=hoy,
+                estado__in=['PENDIENTE', 'CONFIRMADA']
+            ).count()
+            contexto['reservas_en_curso'] = Reserva.objects.filter(
+                estado='EN_CURSO'
+            ).count()
+            contexto['habitaciones_disponibles'] = Habitacion.objects.filter(
+                estado='DISPONIBLE', is_active=True
+            ).count()
+
+        if 'can_clean_rooms' in permissions:
+            contexto['habitaciones_sucias'] = Habitacion.objects.filter(
+                estado='SUCIA'
+            ).count()
+            contexto['limpiezas_en_progreso'] = RegistroLimpieza.objects.filter(
+                estado='EN_PROGRESO'
+            ).count()
+
+        if 'can_do_maintenance' in permissions:
+            contexto['incidencias_pendientes'] = Incidencia.objects.filter(
+                estado='PENDIENTE'
+            ).count()
+            contexto['incidencias_alta_prioridad'] = Incidencia.objects.filter(
+                estado__in=['PENDIENTE', 'EN_PROGRESO'],
+                prioridad='ALTA'
+            ).count()
+
+        if 'can_manage_inventory' in permissions:
+            contexto['articulos_bajo_stock'] = Inventario.objects.filter(
+                stock_actual__lte=models.F('stock_minimo')
+            ).count()
+        
+        if 'can_manage_rooms' in permissions:
+            contexto['habitaciones_activas'] = Habitacion.objects.filter(
+                is_active=True
+            ).count()
+            contexto['habitaciones_inactivas'] = Habitacion.objects.filter(
+                is_active=False
+            ).count()
+            contexto['habitaciones_en_mantenimiento'] = Habitacion.objects.filter(
+                estado='MANTENIMIENTO'
+            ).count()
+
+        try:
+            respuesta = GeminiService.responder_asistente_staff(
+                mensaje_usuario=mensaje,
+                role_name=role_name,
+                permissions=permissions,
+                contexto_operativo=contexto,
+                historial=historial,
+            )
+            return ApiResponse.success(data={"respuesta": respuesta})
+
+        except Exception as e:
+            return ApiResponse.error(
+                message=f"Error al procesar tu consulta: {str(e)}",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

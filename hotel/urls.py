@@ -35,14 +35,13 @@ from .views import (
     ComprobanteListCreateView,
     ComprobanteDetailView,
     ComprobantePDFView,
-    # 🔥 PARCHE DE IMPORTACIONES: Aquí conectamos las vistas que Django reclamaba
     CheckInView,
     CheckOutView,
     RegistroAforoListView,
     RegistroAforoDetailView,
-    # 📈 TU MÓDULO: Conexión con tus vistas de temporadas corregidas
     TemporadaListView,
-    TemporadaDetailView
+    TemporadaDetailView,
+    ChatbotStaffView
 )
 from .auth_views import MyTokenObtainPairView
 
@@ -116,4 +115,5 @@ urlpatterns = [
     # ========== INTEGRACIÓN GEMINI AI ==========
     path('inventarios/analisis-ia', InventarioIAPredictionView.as_view(), name='inventario-analisis-ia'),
     path('promociones/analisis-ia', PromocionesIAView.as_view(), name='promociones-analisis-ia'),
+    path('chatbot', ChatbotStaffView.as_view(), name='chatbot-staff'),
 ]
