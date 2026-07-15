@@ -826,6 +826,41 @@ class Comprobante(models.Model):
     def __str__(self):
         return f"{self.tipo_comprobante} {self.numero_completo} - S/. {self.monto_total} - Reserva {self.reserva.codigo_reserva}"
 
+
+class Resena(models.Model):
+    """
+    Reseña asociada a una estadía (una por estadía).
+    """
+    estadia = models.OneToOneField(
+        Estadia,
+        on_delete=models.CASCADE,
+        related_name='resena',
+        verbose_name='Estadía'
+    )
+    calificacion = models.PositiveSmallIntegerField(verbose_name='Calificación (1-5)')
+    comentario = models.TextField(verbose_name='Comentario')
+    respuesta_administrador = models.TextField(blank=True, null=True, verbose_name='Respuesta del administrador')
+    es_inapropiada = models.BooleanField(default=False, verbose_name='Marcada como inapropiada')
+    fecha_creacion = models.DateTimeField(auto_now_add=True, verbose_name='Fecha de creación')
+
+    class Meta:
+        verbose_name = 'Reseña'
+        verbose_name_plural = 'Reseñas'
+        ordering = ['-fecha_creacion']
+        indexes = [
+            models.Index(fields=['es_inapropiada']),
+            models.Index(fields=['fecha_creacion']),
+        ]
+
+    def __str__(self):
+        huesped = None
+        try:
+            huesped = self.estadia.reserva.huesped
+        except Exception:
+            pass
+        nombre = f"{huesped.nombre} {huesped.apellido}" if huesped else f"Estadía {self.estadia_id}"
+        return f"Reseña de {nombre} - {self.calificacion} estrellas"
+
 # ==============================================================================
 # MÓDULO D: GESTIÓN DE TARIFAS Y PLANIFICACIÓN DINÁMICA
 # ==============================================================================
