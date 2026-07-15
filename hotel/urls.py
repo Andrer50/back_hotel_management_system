@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import path, include
 from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     RegisterView,
@@ -116,4 +116,8 @@ urlpatterns = [
     # ========== INTEGRACIÓN GEMINI AI ==========
     path('inventarios/analisis-ia', InventarioIAPredictionView.as_view(), name='inventario-analisis-ia'),
     path('promociones/analisis-ia', PromocionesIAView.as_view(), name='promociones-analisis-ia'),
+]
+# Rutas del módulo de reseñas (HU-18)
+urlpatterns += [
+    path('', include('hotel.resenas.urls')),
 ]
