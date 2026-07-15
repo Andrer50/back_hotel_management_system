@@ -35,14 +35,15 @@ from .views import (
     ComprobanteListCreateView,
     ComprobanteDetailView,
     ComprobantePDFView,
-    # 🔥 PARCHE DE IMPORTACIONES: Aquí conectamos las vistas que Django reclamaba
     CheckInView,
     CheckOutView,
     RegistroAforoListView,
     RegistroAforoDetailView,
-    # 📈 TU MÓDULO: Conexión con tus vistas de temporadas corregidas
     TemporadaListView,
-    TemporadaDetailView
+    TemporadaDetailView,
+    ChatbotStaffView,
+    DynamicPricingIAView,
+    UpdateBasePricesView
 )
 from .auth_views import MyTokenObtainPairView
 
@@ -120,4 +121,7 @@ urlpatterns = [
 # Rutas del módulo de reseñas (HU-18)
 urlpatterns += [
     path('', include('hotel.resenas.urls')),
+    path('chatbot', ChatbotStaffView.as_view(), name='chatbot-staff'),
+    path('precios/analisis-ia', DynamicPricingIAView.as_view(), name='precios-analisis-ia'),
+    path('precios/aplicar-tarifas', UpdateBasePricesView.as_view(), name='precios-aplicar-tarifas'),
 ]

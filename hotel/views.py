@@ -1,3 +1,4 @@
+from django.db import models
 from django.shortcuts import render
 from django.contrib.auth.models import Group, Permission
 from django.db.models import F, Q
@@ -1577,3 +1578,230 @@ class TemporadaDetailView(APIView):
                 "status": "error",
                 "message": "La temporada seleccionada no existe o ya fue eliminada."
             }, status=status.HTTP_404_NOT_FOUND)
+            
+# ================================================================
+# CHATBOT INTERNO — RF21|IA
+# ================================================================
+
+class ChatbotStaffView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if not GeminiService.is_configured():
+            return ApiResponse.error(
+                message="El servicio de IA no está configurado.",
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        mensaje = request.data.get('mensaje', '').strip()
+        historial = request.data.get('historial', [])  # [{ role, text }]
+
+        if not mensaje:
+            return ApiResponse.error(
+                message="El mensaje no puede estar vacío.",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        # ── Extraer rol y permisos del usuario autenticado (desde el JWT) ──
+        user = request.user
+        role_name = user.role.name if user.role else None
+        permissions = list(
+            user.role.permissions.values_list('codename', flat=True)
+        ) if user.role else []
+
+        # ── Construir contexto operativo anónimo según permisos ────────────
+        contexto = {}
+
+        if 'can_manage_reservations' in permissions:
+            hoy = timezone.now().date()
+            contexto['reservas_pendientes_hoy'] = Reserva.objects.filter(
+                fecha_entrada=hoy,
+                estado__in=['PENDIENTE', 'CONFIRMADA']
+            ).count()
+            contexto['reservas_en_curso'] = Reserva.objects.filter(
+                estado='EN_CURSO'
+            ).count()
+            contexto['habitaciones_disponibles'] = Habitacion.objects.filter(
+                estado='DISPONIBLE', is_active=True
+            ).count()
+
+        if 'can_clean_rooms' in permissions:
+            contexto['habitaciones_sucias'] = Habitacion.objects.filter(
+                estado='SUCIA'
+            ).count()
+            contexto['limpiezas_en_progreso'] = RegistroLimpieza.objects.filter(
+                estado='EN_PROGRESO'
+            ).count()
+
+        if 'can_do_maintenance' in permissions:
+            contexto['incidencias_pendientes'] = Incidencia.objects.filter(
+                estado='PENDIENTE'
+            ).count()
+            contexto['incidencias_alta_prioridad'] = Incidencia.objects.filter(
+                estado__in=['PENDIENTE', 'EN_PROGRESO'],
+                prioridad='ALTA'
+            ).count()
+
+        if 'can_manage_inventory' in permissions:
+            contexto['articulos_bajo_stock'] = Inventario.objects.filter(
+                stock_actual__lte=models.F('stock_minimo')
+            ).count()
+        
+        if 'can_manage_rooms' in permissions:
+            contexto['habitaciones_activas'] = Habitacion.objects.filter(
+                is_active=True
+            ).count()
+            contexto['habitaciones_inactivas'] = Habitacion.objects.filter(
+                is_active=False
+            ).count()
+            contexto['habitaciones_en_mantenimiento'] = Habitacion.objects.filter(
+                estado='MANTENIMIENTO'
+            ).count()
+
+        try:
+            respuesta = GeminiService.responder_asistente_staff(
+                mensaje_usuario=mensaje,
+                role_name=role_name,
+                permissions=permissions,
+                contexto_operativo=contexto,
+                historial=historial,
+            )
+            return ApiResponse.success(data={"respuesta": respuesta})
+
+        except Exception as e:
+            return ApiResponse.error(
+                message=f"Error al procesar tu consulta: {str(e)}",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+# ================================================================
+# PRECIOS DINÁMICOS CON IA — RF22|IA
+# ================================================================
+
+class DynamicPricingIAView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if not GeminiService.is_configured():
+            return ApiResponse.error(
+                message="El servicio de IA no está configurado o requiere la clave GEMINI_API_KEY.",
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        # 1. Obtener la ocupación real
+        habitaciones_totales = Habitacion.objects.filter(is_active=True).count()
+        habitaciones_ocupadas = Habitacion.objects.filter(estado='OCUPADA', is_active=True).count()
+        tasa_ocupacion_real = (habitaciones_ocupadas / habitaciones_totales * 100) if habitaciones_totales > 0 else 0.0
+
+        # Ocupación simulada si viene en el request
+        ocupacion_simulada = request.data.get('ocupacion_simulada')
+        tasa_ocupacion = float(ocupacion_simulada) if ocupacion_simulada is not None else tasa_ocupacion_real
+
+        # 2. Obtener precios base actuales por tipo de habitación
+        tipos_habitacion = ['INDIVIDUAL', 'DOBLE', 'SUITE', 'FAMILIAR']
+        habitaciones_data = []
+        for tipo in tipos_habitacion:
+            hab = Habitacion.objects.filter(tipo=tipo, is_active=True).first()
+            precio_base = float(hab.precio_base) if hab else 0.0
+            if precio_base == 0.0:
+                defaults = {'INDIVIDUAL': 120.0, 'DOBLE': 180.0, 'SUITE': 350.0, 'FAMILIAR': 250.0}
+                precio_base = defaults.get(tipo, 100.0)
+            habitaciones_data.append({
+                'tipo': tipo,
+                'precio_base_actual': precio_base
+            })
+
+        # 3. Obtener o definir precios de la competencia
+        competidores_simulados = request.data.get('competidores')
+        if competidores_simulados:
+            competidores_data = []
+            for tipo in tipos_habitacion:
+                precio_comp = float(competidores_simulados.get(tipo, 0.0))
+                if precio_comp == 0.0:
+                    defaults = {'INDIVIDUAL': 130.0, 'DOBLE': 200.0, 'SUITE': 370.0, 'FAMILIAR': 270.0}
+                    precio_comp = defaults.get(tipo, 110.0)
+                competidores_data.append({
+                    'tipo': tipo,
+                    'precio_competidor_promedio': precio_comp
+                })
+        else:
+            competidores_data = [
+                {'tipo': 'INDIVIDUAL', 'precio_competidor_promedio': 130.0},
+                {'tipo': 'DOBLE', 'precio_competidor_promedio': 200.0},
+                {'tipo': 'SUITE', 'precio_competidor_promedio': 380.0},
+                {'tipo': 'FAMILIAR', 'precio_competidor_promedio': 280.0},
+            ]
+
+        # 4. Obtener temporadas/campañas activas (o simuladas)
+        temporada_simulada = request.data.get('temporada_simulada')
+        if temporada_simulada:
+            temporadas_activas = [{
+                'nombre': temporada_simulada,
+                'descripcion': f'Simulación de temporada: {temporada_simulada}'
+            }]
+        else:
+            hoy = timezone.now().date()
+            temps = Temporada.objects.filter(fecha_inicio__lte=hoy, fecha_fin__gte=hoy, is_active=True)
+            temporadas_activas = []
+            for t in temps:
+                temporadas_activas.append({
+                    'nombre': t.nombre,
+                    'porcentaje_variacion': t.porcentaje
+                })
+            if not temporadas_activas:
+                temporadas_activas = [{'nombre': 'Regular / Ninguna', 'porcentaje_variacion': 0}]
+
+        try:
+            # Llamamos al servicio de IA
+            analisis_json_str = GeminiService.predict_dynamic_pricing(
+                habitaciones_data=habitaciones_data,
+                tasa_ocupacion=tasa_ocupacion,
+                competidores_data=competidores_data,
+                temporadas_activas=temporadas_activas
+            )
+            
+            import json
+            analisis_data = json.loads(analisis_json_str)
+            
+            analisis_data['meta'] = {
+                'tasa_ocupacion_real': tasa_ocupacion_real,
+                'tasa_ocupacion_analizada': tasa_ocupacion,
+                'es_simulacion': (ocupacion_simulada is not None or competidores_simulados is not None or temporada_simulada is not None)
+            }
+            
+            return ApiResponse.success(data=analisis_data)
+
+        except Exception as e:
+            return ApiResponse.error(
+                message=f"Error al calcular precios dinámicos con IA: {str(e)}",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class UpdateBasePricesView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        precios = request.data.get('precios')
+        if not precios or not isinstance(precios, dict):
+            return ApiResponse.error(
+                message="Debe proporcionar un objeto de precios válido.",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        updated_count = 0
+        for tipo, nuevo_precio in precios.items():
+            if tipo in ['INDIVIDUAL', 'DOBLE', 'SUITE', 'FAMILIAR']:
+                try:
+                    precio_float = float(nuevo_precio)
+                    if precio_float <= 0:
+                        continue
+                    res = Habitacion.objects.filter(tipo=tipo).update(precio_base=precio_float)
+                    updated_count += res
+                except (ValueError, TypeError):
+                    continue
+
+        return ApiResponse.success(
+            message=f"Se actualizaron las tarifas base. Habitaciones afectadas: {updated_count}."
+        )
