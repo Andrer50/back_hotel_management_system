@@ -41,7 +41,9 @@ from .views import (
     RegistroAforoDetailView,
     TemporadaListView,
     TemporadaDetailView,
-    ChatbotStaffView
+    ChatbotStaffView,
+    DynamicPricingIAView,
+    UpdateBasePricesView
 )
 from .auth_views import MyTokenObtainPairView
 
@@ -116,4 +118,6 @@ urlpatterns = [
     path('inventarios/analisis-ia', InventarioIAPredictionView.as_view(), name='inventario-analisis-ia'),
     path('promociones/analisis-ia', PromocionesIAView.as_view(), name='promociones-analisis-ia'),
     path('chatbot', ChatbotStaffView.as_view(), name='chatbot-staff'),
+    path('precios/analisis-ia', DynamicPricingIAView.as_view(), name='precios-analisis-ia'),
+    path('precios/aplicar-tarifas', UpdateBasePricesView.as_view(), name='precios-aplicar-tarifas'),
 ]
