@@ -66,6 +66,22 @@ class SalesAnalysisSchema(BaseModel):
 
 
 # ==============================================================================
+# ESQUEMAS DE PRECIOS DINÁMICOS
+# ==============================================================================
+
+class RoomTypePricingRecommendation(BaseModel):
+    habitacion_tipo: str = Field(description="Tipo de habitación en mayúsculas (INDIVIDUAL, DOBLE, SUITE, FAMILIAR)")
+    precio_base_actual: float = Field(description="Precio base actual de la habitación")
+    precio_dinamico_sugerido: float = Field(description="Precio dinámico sugerido por la IA")
+    porcentaje_cambio: float = Field(description="Porcentaje de cambio sugerido (positivo para incremento, negativo para descuento)")
+    justificacion: str = Field(description="Razón comercial detallada basada en la ocupación actual, competidores y temporada.")
+
+class DynamicPricingSchema(BaseModel):
+    recomendaciones: List[RoomTypePricingRecommendation]
+    insights_mercado: str = Field(description="Análisis e insights globales de las tarifas propuestas.")
+
+
+# ==============================================================================
 # SERVICIO PRINCIPAL DE GEMINI AI
 # ==============================================================================
 
@@ -172,6 +188,44 @@ class GeminiService:
             prompt=prompt,
             system_instruction=system_instruction,
             response_schema=SalesAnalysisSchema,
+            temperature=0.2
+        )
+
+    @classmethod
+    def predict_dynamic_pricing(
+        cls, 
+        habitaciones_data: List[Dict[str, Any]], 
+        tasa_ocupacion: float, 
+        competidores_data: List[Dict[str, Any]], 
+        temporadas_activas: List[Dict[str, Any]]
+    ) -> str:
+        """
+        Analiza la ocupación actual, tarifas de competidores y temporadas para proponer precios dinámicos.
+        """
+        system_instruction = (
+            "Eres un experto en Revenue Management para el Hotel Asturias, un hotel de primer nivel. "
+            "Tu objetivo es proponer el precio óptimo dinámico por noche para cada categoría de habitación. "
+            "Para ello, debes evaluar:\n"
+            "1. La ocupación actual del hotel (a mayor ocupación, tarifas más altas; a menor ocupación, descuentos atractivos).\n"
+            "2. Las tarifas de los hoteles competidores (para mantenernos competitivos en el mercado).\n"
+            "3. Las temporadas o eventos especiales activos que puedan aumentar el flujo de huéspedes.\n\n"
+            "Calcula el precio dinámico de forma inteligente y realista. Retorna la respuesta en formato JSON exacto."
+        )
+        
+        prompt = (
+            f"DATOS DE NUESTRO HOTEL:\n"
+            f"- Habitaciones y precios base actuales: {habitaciones_data}\n"
+            f"- Tasa de ocupación actual: {tasa_ocupacion}%\n\n"
+            f"DATOS DEL MERCADO:\n"
+            f"- Tarifas de la competencia (Promedio): {competidores_data}\n"
+            f"- Temporadas/Campañas activas: {temporadas_activas}\n\n"
+            f"Analiza la situación y genera las recomendaciones de precios dinámicos según el esquema solicitado."
+        )
+        
+        return cls.generate_content(
+            prompt=prompt,
+            system_instruction=system_instruction,
+            response_schema=DynamicPricingSchema,
             temperature=0.2
         )
 
