@@ -745,6 +745,102 @@ class SelectDataView(APIView):
 import json
 from .gemini_service import GeminiService
 
+from datetime import timedelta
+from django.db.models import Sum
+
+class InventarioPredictivoView(APIView):
+    """
+    Endpoint para el cálculo de inventario predictivo (RF-23).
+    Estima la demanda a partir del consumo promedio por reserva en los últimos 30 días
+    multiplicado por la cantidad de reservas futuras.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        now = timezone.now()
+        hoy = now.date()
+        hace_30_dias = now - timedelta(days=30)
+        dentro_de_15_dias = hoy + timedelta(days=15)
+
+        # 1. Obtener cantidad de reservas en los últimos 30 días
+        reservas_pasadas_count = Reserva.objects.filter(
+            fecha_entrada__gte=hace_30_dias.date(),
+            fecha_entrada__lte=hoy,
+            estado__in=['CONFIRMADA', 'EN_CURSO', 'COMPLETADA']
+        ).count()
+
+        # Evitar división por cero
+        if reservas_pasadas_count == 0:
+            reservas_pasadas_count = 1
+
+        # 2. Obtener cantidad de reservas futuras (próximos 15 días)
+        reservas_futuras_count = Reserva.objects.filter(
+            fecha_entrada__gt=hoy,
+            fecha_entrada__lte=dentro_de_15_dias,
+            estado__in=['PENDIENTE', 'CONFIRMADA', 'EN_CURSO']
+        ).count()
+
+        # 3. Calcular consumo por ítem en los últimos 30 días
+        consumos_pasados = ConsumoExtra.objects.filter(
+            fecha_consumo__gte=hace_30_dias,
+            inventario__isnull=False
+        ).values('inventario_id').annotate(total_cantidad=Sum('cantidad'))
+
+        consumo_map = {c['inventario_id']: c['total_cantidad'] for c in consumos_pasados}
+
+        # 4. Obtener inventario actual
+        inventarios = Inventario.objects.all()
+        resultado = []
+
+        for item in inventarios:
+            cant_consumida = consumo_map.get(item.id, 0)
+            
+            # Consumo diario promedio para calcular la fecha de desabastecimiento
+            consumo_diario_simple = cant_consumida / 30.0
+
+            # Consumo promedio por reserva
+            consumo_por_reserva = cant_consumida / float(reservas_pasadas_count)
+
+            # Consumo proyectado
+            consumo_proyectado = round(consumo_por_reserva * reservas_futuras_count, 2)
+
+            # Stock proyectado = stock_actual - consumo proyectado
+            stock_proyectado = item.stock_actual - consumo_proyectado
+
+            # Stock ideal = stock_minimo * 3
+            stock_ideal = item.stock_minimo * 3
+
+            # Sugerencia de pedido = stock_ideal - stock_proyectado (si da > 0)
+            sugerencia_pedido = max(0, int(stock_ideal - stock_proyectado))
+
+            # Fecha estimada de desabastecimiento
+            if consumo_diario_simple > 0:
+                dias_para_desabastecer = item.stock_actual / consumo_diario_simple
+                if dias_para_desabastecer > 365:
+                    fecha_desabastecimiento = "Más de un año"
+                else:
+                    fecha_estimada = hoy + timedelta(days=int(dias_para_desabastecer))
+                    fecha_desabastecimiento = fecha_estimada.strftime('%Y-%m-%d')
+            else:
+                fecha_desabastecimiento = "Sin riesgo (Sin consumo reciente)"
+
+            resultado.append({
+                "id": item.id,
+                "nombre": item.nombre,
+                "descripcion": item.descripcion or "",
+                "stock_actual": item.stock_actual,
+                "stock_minimo": item.stock_minimo,
+                "stock_ideal": stock_ideal,
+                "projected_consumption": consumo_proyectado,
+                "projected_stock": round(stock_proyectado, 2),
+                "suggested_order": sugerencia_pedido,
+                "estimated_stockout_date": fecha_desabastecimiento,
+                "sede": item.sede.nombre if item.sede else "Sin Sede"
+            })
+
+        return ApiResponse.success(data=resultado, message="Predicción de inventario generada exitosamente")
+
+
 class InventarioIAPredictionView(APIView):
     """
     Endpoint que analiza el inventario usando Gemini y predice necesidades.

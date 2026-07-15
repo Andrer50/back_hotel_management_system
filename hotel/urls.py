@@ -30,6 +30,7 @@ from .views import (
     InventarioListView,
     InventarioDetailView,
     InventarioIAPredictionView,
+    InventarioPredictivoView,
     PromocionesIAView,
     ConsumoExtraListCreateView,
     ComprobanteListCreateView,
@@ -114,6 +115,7 @@ urlpatterns = [
     path('select-data', SelectDataView.as_view(), name='select-data'),
     
     # ========== INTEGRACIÓN GEMINI AI ==========
+    path('inventarios/predictivo', InventarioPredictivoView.as_view(), name='inventario-predictivo'),
     path('inventarios/analisis-ia', InventarioIAPredictionView.as_view(), name='inventario-analisis-ia'),
     path('promociones/analisis-ia', PromocionesIAView.as_view(), name='promociones-analisis-ia'),
 ]
