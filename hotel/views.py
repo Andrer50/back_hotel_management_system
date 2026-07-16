@@ -47,7 +47,8 @@ from .serializers import (
 )
 
 from .utils import ApiResponse
-
+import json
+from .gemini_service import GeminiService
 import uuid
 
 class PlantaListView(generics.ListCreateAPIView):
@@ -1577,3 +1578,42 @@ class TemporadaDetailView(APIView):
                 "status": "error",
                 "message": "La temporada seleccionada no existe o ya fue eliminada."
             }, status=status.HTTP_404_NOT_FOUND)
+class RecomendacionIAView(APIView):
+    """
+    Endpoint para obtener recomendaciones personalizadas de servicios del hotel
+    basadas en el perfil de un huésped utilizando la API de Gemini.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        try:
+            perfil_data = request.data
+            
+            # Validación de entrada
+            if not perfil_data:
+                # 🟢 CORRECCIÓN: Devolvemos un diccionario directo en lugar de anidar ApiResponse si este retorna un Response
+                return Response({
+                    "status": "error",
+                    "message": "Falta la información del perfil del huésped."
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Consumimos el método estructurado de tu GeminiService
+            response_json_str = GeminiService.recommend_services_for_guest(perfil_data)
+            
+            # Desempaquetamos el string JSON devuelto por Gemini a un diccionario de Python
+            resultado = json.loads(response_json_str)
+
+            # 🟢 CORRECCIÓN: Si tu ApiResponse.success() devuelve un objeto Response, cámbialo por un diccionario plano.
+            # Si ApiResponse.success() solo devuelve un diccionario, puedes dejarlo, pero para ir a lo seguro:
+            return Response({
+                "status": "success",
+                "message": "Recomendaciones generadas con éxito por la IA.",
+                "data": resultado
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            # Tu bloque de excepción ya estaba perfecto porque usa un diccionario plano:
+            return Response({
+                "status": "error",
+                "message": f"Error al procesar con Gemini: {str(e)}"
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

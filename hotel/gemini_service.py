@@ -63,6 +63,31 @@ class SalesAnalysisSchema(BaseModel):
     analisis_rentabilidad: ProfitabilityAnalysis
     propuestas_promocionales: List[PromotionProposal]
 
+
+# ==============================================================================
+# 🚀 NUEVO: ESQUEMAS DE RECOMENDACIÓN DE SERVICIOS SEGÚN PERFIL (API GEMINI)
+# ==============================================================================
+
+class ServicioSugeridoSchema(BaseModel):
+    nombre_servicio: str = Field(
+        description="Nombre del servicio o espacio del hotel recomendado (ej. Spa, Restaurante Gourmet, Piscina, Lavandería, bar)."
+    )
+    justificacion: str = Field(
+        description="Explicación detallada y atractiva de por qué este servicio se acopla a las necesidades del huésped."
+    )
+    descuento_sugerido: int = Field(
+        description="Porcentaje de descuento (0 a 100) recomendado para incentivar la reserva o compra del servicio."
+    )
+
+class RecomendacionHuespedSchema(BaseModel):
+    analisis_perfil: str = Field(
+        description="Breve análisis del perfil del huésped, identificando sus motivaciones principales (descanso, trabajo, romance, etc.)."
+    )
+    servicios_recomendados: List[ServicioSugeridoSchema] = Field(
+        description="Listado de servicios personalizados recomendados para mejorar la estadía del huésped."
+    )
+
+
 # ==============================================================================
 # SERVICIO PRINCIPAL DE GEMINI AI
 # ==============================================================================
@@ -85,6 +110,7 @@ class GeminiService:
             )
         
         genai.configure(api_key=api_key)
+        # 🎯 Tomará el modelo gemini-3.1-flash-lite configurado por tu orquestador
         model_name = os.getenv('GEMINI_MODEL', 'gemini-1.5-flash')
         
         config = {}
@@ -177,4 +203,36 @@ class GeminiService:
             system_instruction=system_instruction,
             response_schema=SalesAnalysisSchema,
             temperature=0.2
+        )
+
+    # ==============================================================================
+    #  RECOMENDACIÓN PERSONALIZADA PARA EL HUÉSPED
+    # ==============================================================================
+    @classmethod
+    def recommend_services_for_guest(cls, guest_profile: Dict[str, Any]) -> str:
+        """
+        Analiza el perfil de un huésped y genera recomendaciones estructuradas de servicios del hotel.
+        """
+        system_instruction = (
+            "Eres un conserje virtual experto en hospitalidad del Hotel Asturias Suites. "
+            "Tu meta es analizar el perfil brindado (edad, motivo de viaje, acompañantes, preferencias gastronómicas, intereses) "
+            "y sugerir de forma elegante, persuasiva y personalizada los mejores servicios disponibles "
+            "en el hotel para mejorar su experiencia y aumentar la satisfacción general."
+        )
+
+        prompt = (
+            f"Información del Perfil del Huésped:\n"
+            f"- Edad: {guest_profile.get('edad', 'No especificado')}\n"
+            f"- Motivo del viaje: {guest_profile.get('motivo_viaje', 'No especificado')}\n"
+            f"- Acompañantes: {guest_profile.get('acompanantes', 'No especificado')}\n"
+            f"- Preferencias de comida: {guest_profile.get('preferencias_comida', 'No especificado')}\n"
+            f"- Intereses / Hobbies: {guest_profile.get('intereses', 'No especificado')}\n\n"
+            f"Analiza detalladamente este perfil y devuelve las recomendaciones mapeando el JSON estructurado según el esquema solicitado."
+        )
+
+        return cls.generate_content(
+            prompt=prompt,
+            system_instruction=system_instruction,
+            response_schema=RecomendacionHuespedSchema,
+            temperature=0.3
         )

@@ -42,7 +42,9 @@ from .views import (
     RegistroAforoDetailView,
     # 📈 TU MÓDULO: Conexión con tus vistas de temporadas corregidas
     TemporadaListView,
-    TemporadaDetailView
+    TemporadaDetailView,
+    # 🧠 NUEVO: Importamos la vista de recomendación IA directamente
+    RecomendacionIAView
 )
 from .auth_views import MyTokenObtainPairView
 
@@ -116,4 +118,5 @@ urlpatterns = [
     # ========== INTEGRACIÓN GEMINI AI ==========
     path('inventarios/analisis-ia', InventarioIAPredictionView.as_view(), name='inventario-analisis-ia'),
     path('promociones/analisis-ia', PromocionesIAView.as_view(), name='promociones-analisis-ia'),
+    path('ia/recomendar-servicios', RecomendacionIAView.as_view(), name='recomendar_servicios_ia'),
 ]
