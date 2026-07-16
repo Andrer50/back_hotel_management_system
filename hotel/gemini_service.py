@@ -66,6 +66,29 @@ class SalesAnalysisSchema(BaseModel):
 
 
 # ==============================================================================
+# ESQUEMAS DE RECOMENDACIÓN DE SERVICIOS SEGÚN PERFIL (API GEMINI)
+# ==============================================================================
+
+class ServicioSugeridoSchema(BaseModel):
+    nombre_servicio: str = Field(
+        description="Nombre del servicio o espacio del hotel recomendado (ej. Spa, Restaurante Gourmet, Piscina, Lavandería, bar)."
+    )
+    justificacion: str = Field(
+        description="Explicación detallada y atractiva de por qué este servicio se acopla a las necesidades del huésped."
+    )
+    descuento_sugerido: int = Field(
+        description="Porcentaje de descuento (0 a 100) recomendado para incentivar la reserva o compra del servicio."
+    )
+
+class RecomendacionHuespedSchema(BaseModel):
+    analisis_perfil: str = Field(
+        description="Breve análisis del perfil del huésped, identificando sus motivaciones principales (descanso, trabajo, romance, etc.)."
+    )
+    servicios_recomendados: List[ServicioSugeridoSchema] = Field(
+        description="Listado de servicios personalizados recomendados para mejorar la estadía del huésped."
+    )
+
+# ==============================================================================
 # ESQUEMAS DE PRECIOS DINÁMICOS
 # ==============================================================================
 
@@ -101,7 +124,7 @@ class GeminiService:
                 "La clave GEMINI_API_KEY no está configurada o contiene el valor predeterminado. "
                 "Por favor, agrégala en tu archivo .env para habilitar este servicio."
             )
-        # El cliente encapsula la conexión a la API de manera orientada a objetos
+        # El cliente encapsula la conexión a la API de manera orientada a objetos en el nuevo SDK
         return genai.Client(api_key=api_key)
 
     @classmethod
@@ -120,6 +143,7 @@ class GeminiService:
             client = cls._get_client()
             model_name = os.getenv('GEMINI_MODEL', 'gemini-3.1-flash-lite')
             print(f">>> MODELO USADO: {model_name}")
+            
             # Construimos la configuración usando las clases nativas del nuevo SDK
             config = types.GenerateContentConfig(
                 temperature=temperature,
@@ -191,6 +215,38 @@ class GeminiService:
             temperature=0.2
         )
 
+    # ==============================================================================
+    # RECOMENDACIÓN PERSONALIZADA PARA EL HUÉSPED
+    # ==============================================================================
+    @classmethod
+    def recommend_services_for_guest(cls, guest_profile: Dict[str, Any]) -> str:
+        """
+        Analiza el perfil de un huésped y genera recomendaciones estructuradas de servicios del hotel.
+        """
+        system_instruction = (
+            "Eres un conserje virtual experto en hospitalidad del Hotel Asturias Suites. "
+            "Tu meta es analizar el perfil brindado (edad, motivo de viaje, acompañantes, preferencias gastronómicas, intereses) "
+            "y sugerir de forma elegante, persuasiva y personalizada los mejores servicios disponibles "
+            "en el hotel para mejorar su experiencia y aumentar la satisfacción general."
+        )
+
+        prompt = (
+            f"Información del Perfil del Huésped:\n"
+            f"- Edad: {guest_profile.get('edad', 'No especificado')}\n"
+            f"- Motivo del viaje: {guest_profile.get('motivo_viaje', 'No especificado')}\n"
+            f"- Acompañantes: {guest_profile.get('acompanantes', 'No especificado')}\n"
+            f"- Preferencias de comida: {guest_profile.get('preferencias_comida', 'No especificado')}\n"
+            f"- Intereses / Hobbies: {guest_profile.get('intereses', 'No especificado')}\n\n"
+            f"Analiza detalladamente este perfil y devuelve las recomendaciones mapeando el JSON estructurado según el esquema solicitado."
+        )
+
+        return cls.generate_content(
+            prompt=prompt,
+            system_instruction=system_instruction,
+            response_schema=RecomendacionHuespedSchema,
+            temperature=0.3
+        )
+
     @classmethod
     def predict_dynamic_pricing(
         cls, 
@@ -232,13 +288,12 @@ class GeminiService:
     # ==============================================================================
     # ASISTENCIA INTERNA PARA EL PERSONAL DEL HOTEL (CHATBOT STAFF)
     # ==============================================================================
-
     @classmethod
     def responder_asistente_staff(
         cls,
         mensaje_usuario: str,
         role_name: str | None,
-        permissions: list[str], # Mantenemos el parámetro por si lo mandas desde el controlador, aunque ya no lo usemos aquí
+        permissions: list[str],
         contexto_operativo: dict,
         historial: list[dict]
     ) -> str:
@@ -246,7 +301,6 @@ class GeminiService:
         Chatbot interno para el personal del hotel.
         Responde inyectando un prompt fijo basado directamente en el ROL del usuario.
         """
-
         if not role_name:
             return (
                 "No se ha detectado un rol asignado a tu cuenta. "
@@ -334,13 +388,11 @@ class GeminiService:
             )
         }
 
-        # Extraer el contexto del diccionario; si el rol no está, dar un mensaje genérico.
         funciones_str = CONTEXTO_POR_ROL.get(
             role_name, 
             f"Tu rol '{role_name}' es válido, pero actualmente no tengo un manual de funciones específico configurado para ti. Consulta con el Administrador."
         )
 
-        # ── Contexto operativo anónimo según rol ──────────────────────────────
         contexto_str = ""
         if contexto_operativo:
             lineas = [f"  - {clave}: {valor}" for clave, valor in contexto_operativo.items()]
@@ -349,7 +401,6 @@ class GeminiService:
                 + "\n".join(lineas)
             )
 
-        # ── System instruction ────────────────────────────────────────────────
         system_instruction = (
             f"Eres 'Astur', el asistente interno del sistema de gestión del Hotel Asturias. "
             f"Estás hablando con un miembro del personal con el rol: '{role_name}'.\n\n"
@@ -370,7 +421,6 @@ class GeminiService:
             f"5. Sé conciso: máximo 3-4 oraciones por respuesta salvo que el usuario pida detalle."
         )
 
-        # ── Construir historial para la API ───────────────────────────────────
         contents = [
             types.Content(
                 role=msg["role"],
@@ -378,7 +428,6 @@ class GeminiService:
             ) for msg in historial
         ]
         
-        # Añadir el mensaje actual
         contents.append(
             types.Content(
                 role="user",

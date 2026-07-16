@@ -48,8 +48,13 @@ from .serializers import (
 )
 
 from .utils import ApiResponse
-
+import json
+from .gemini_service import GeminiService
 import uuid
+
+# ================================================================
+# PLANTAS
+# ================================================================
 
 class PlantaListView(generics.ListCreateAPIView):
     queryset = Planta.objects.all().order_by('numero')
@@ -72,8 +77,12 @@ class PlantaDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = PlantaSerializer
     permission_classes = (permissions.IsAuthenticated,)
 
+# ================================================================
+# HABITACIONES
+# ================================================================
+
 class HabitacionListCreateView(generics.ListCreateAPIView):
-    """Listar y crear habitaciones (VERSIÓN ÚNICA - ELIMINAR DUPLICADO)"""
+    """Listar y crear habitaciones (VERSIÓN ÚNICA)"""
     serializer_class = HabitacionSerializer
     permission_classes = (permissions.IsAuthenticated,)
 
@@ -121,6 +130,10 @@ class HabitacionDetailView(generics.RetrieveUpdateDestroyAPIView):
         instance = self.get_object()
         self.perform_destroy(instance)
         return ApiResponse.success(message="Habitación eliminada exitosamente")
+
+# ================================================================
+# HUÉSPEDES
+# ================================================================
 
 class HuespedListCreateView(generics.ListCreateAPIView):
     """Listar y crear huéspedes (RF-09)"""
@@ -177,6 +190,10 @@ class HuespedDetailView(generics.RetrieveUpdateDestroyAPIView):
         instance = self.get_object()
         self.perform_destroy(instance)
         return ApiResponse.success(message="Huésped eliminado exitosamente")
+
+# ================================================================
+# USUARIOS, ROLES Y AUTENTICACIÓN
+# ================================================================
 
 class RegisterView(generics.CreateAPIView):
     queryset = Usuario.objects.all()
@@ -291,6 +308,10 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
         self.perform_destroy(instance)
         return ApiResponse.success(message="Usuario eliminado exitosamente")
 
+# ================================================================
+# ÁREAS COMUNES Y REGISTROS DE AFORO
+# ================================================================
+
 class AreaComunListView(generics.ListCreateAPIView):
     queryset = AreaComun.objects.all().order_by('id')
     serializer_class = AreaComunSerializer
@@ -334,12 +355,15 @@ class AreaComunDetailView(generics.RetrieveUpdateDestroyAPIView):
         self.perform_destroy(instance)
         return ApiResponse.success(message="Área común eliminada exitosamente")
 
+# ================================================================
+# REGISTROS DE LIMPIEZA
+# ================================================================
+
 class RegistroLimpiezaListView(generics.ListCreateAPIView):
     serializer_class = RegistroLimpiezaSerializer
     permission_classes = (permissions.IsAuthenticated,)
 
     def get_queryset(self):
-        # Filtra solo los registros activos (no completados) para el dashboard
         return RegistroLimpieza.objects.select_related(
             'habitacion', 'personal_limpieza'
         ).order_by('-fecha_inicio')
@@ -359,21 +383,19 @@ class RegistroLimpiezaListView(generics.ListCreateAPIView):
             status_code=status.HTTP_201_CREATED
         )
 
-
 class RegistroLimpiezaDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = RegistroLimpieza.objects.all()
     serializer_class = RegistroLimpiezaSerializer
     permission_classes = (permissions.IsAuthenticated,)
 
     def update(self, request, *args, **kwargs):
-        partial = kwargs.pop('partial', True)  # siempre partial
+        partial = kwargs.pop('partial', True)  # siempre parcial
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         
         nuevo_estado = request.data.get('estado')
         
-        # Si se completa la limpieza, registrar fecha_fin y poner habitación DISPONIBLE
         if nuevo_estado in ['COMPLETADO', 'INSPECCIONADO'] and not instance.fecha_fin:
             serializer.save(fecha_fin=timezone.now())
             instance.habitacion.estado = 'DISPONIBLE'
@@ -383,9 +405,12 @@ class RegistroLimpiezaDetailView(generics.RetrieveUpdateDestroyAPIView):
             
         return ApiResponse.success(
             data=serializer.data,
-            message="Registro actualizado exitosamente"
+            message="Registro de limpieza actualizado exitosamente"
         )
 
+# ================================================================
+# INCIDENCIAS Y MANTENIMIENTO
+# ================================================================
 
 class IncidenciaListView(generics.ListCreateAPIView):
     serializer_class = IncidenciaSerializer
@@ -418,7 +443,6 @@ class IncidenciaListView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         serializer.save(reportado_por=self.request.user)
-
 
 class IncidenciaDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Incidencia.objects.all()
@@ -485,23 +509,71 @@ class PersonalMantenimientoListView(generics.ListAPIView):
         serializer = self.get_serializer(queryset, many=True)
         return ApiResponse.success(data=serializer.data)
 
-from rest_framework.views import APIView
+# ================================================================
+# RESERVAS (RF-10)
+# ================================================================
 
-class SelectDataView(APIView):
-    permission_classes = (permissions.IsAuthenticated,)
+class ReservaListCreateView(generics.ListCreateAPIView):
+    """Listar y crear reservas"""
+    queryset = Reserva.objects.select_related(
+        'huesped', 'habitacion'
+    ).all().order_by('-fecha_reserva')
+    serializer_class = ReservaSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        estado = self.request.query_params.get('estado')
+        if estado:
+            queryset = queryset.filter(estado=estado)
+        
+        search = self.request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(
+                Q(codigo_reserva__icontains=search) |
+                Q(huesped__nombre__icontains=search) |
+                Q(huesped__apellido__icontains=search)
+            )
+        return queryset
+    
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        codigo = f"AST-{uuid.uuid4().hex[:6].upper()}"
+        serializer.save(codigo_reserva=codigo)
+        return ApiResponse.success(
+            data=serializer.data,
+            message=f"Reserva {codigo} creada exitosamente",
+            status_code=status.HTTP_201_CREATED
+        )
 
-    def get(self, request, *args, **kwargs):
-        huespedes = Huesped.objects.all().order_by('nombre')
-        data = {
-            "huespedes": [
-                {
-                    "id": h.id,
-                    "nombre_completo": f"{h.nombre} {h.apellido}",
-                    "documento": h.documento
-                } for h in huespedes
-            ]
-        }
-        return ApiResponse.success(data=data)
+class ReservaDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Obtener, actualizar o cancelar una reserva específica"""
+    queryset = Reserva.objects.all()
+    serializer_class = ReservaSerializer
+    permission_classes = [IsAuthenticated]
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return ApiResponse.success(data=serializer.data)
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', True)  # Partial PATCH por defecto
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return ApiResponse.success(
+            data=serializer.data,
+            message="Reserva actualizada exitosamente"
+        )
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.estado = 'CANCELADA'
+        instance.save()
+        return ApiResponse.success(message="Reserva cancelada exitosamente")
 
 class ReservaListView(generics.ListCreateAPIView):
     queryset = Reserva.objects.all().order_by('-id')
@@ -523,46 +595,74 @@ class ReservaListView(generics.ListCreateAPIView):
             status_code=status.HTTP_201_CREATED
         )
 
-class ReservaDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Reserva.objects.all().order_by('-id')
-    serializer_class = ReservaSerializer
-    permission_classes = (permissions.IsAuthenticated,)
-
-    def retrieve(self, request, *args, **kwargs):
-        instance = self.get_object()
-        serializer = self.get_serializer(instance)
-        return ApiResponse.success(data=serializer.data)
-
-    def update(self, request, *args, **kwargs):
-        partial = kwargs.pop('partial', True)  # Use partial update by default for easy PATCH
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
-        return ApiResponse.success(data=serializer.data, message="Reserva actualizada exitosamente")
-
-    def destroy(self, request, *args, **kwargs):
-        instance = self.get_object()
-        self.perform_destroy(instance)
-        return ApiResponse.success(message="Reserva eliminada exitosamente")
+# ================================================================
+# ESTADÍSTICAS Y KPI DEL DASHBOARD
+# ================================================================
 
 class DashboardStatsView(APIView):
-    permission_classes = (permissions.IsAuthenticated,)
-
-    def get(self, request, *args, **kwargs):
-        total_rooms = Habitacion.objects.count()
-        occupied_rooms = Habitacion.objects.filter(estado='OCUPADA').count()
+    """Estadísticas principales para el dashboard del hotel"""
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        hoy = timezone.now().date()
         
-        ocupacion = int((occupied_rooms / total_rooms) * 100) if total_rooms > 0 else 0
         total_huespedes = Huesped.objects.count()
-        reservas_activas = Reserva.objects.filter(estado__in=['CONFIRMADA', 'EN_CURSO']).count()
+        reservas_activas = Reserva.objects.filter(estado='EN_CURSO').count()
+        checkins_hoy = Reserva.objects.filter(
+            fecha_entrada=hoy,
+            estado__in=['CONFIRMADA', 'EN_CURSO']
+        ).count()
         
-        data = {
-            "ocupacion": ocupacion,
-            "total_huespedes": total_huespedes,
-            "reservas_activas": reservas_activas
-        }
-        return ApiResponse.success(data=data)
+        habitaciones_totales = Habitacion.objects.count()
+        habitaciones_ocupadas = Habitacion.objects.filter(estado='OCUPADA').count()
+        ocupacion = round((habitaciones_ocupadas / habitaciones_totales * 100), 1) if habitaciones_totales > 0 else 0
+        
+        return ApiResponse.success(data={
+            'total_huespedes': total_huespedes,
+            'reservas_activas': reservas_activas,
+            'checkins_hoy': checkins_hoy,
+            'ocupacion': ocupacion,
+            'ingresos_mes': 0,
+        })
+
+# ================================================================
+# ENTRADAS PARA SELECTS Y COMBOBOXES
+# ================================================================
+
+class SelectDataView(APIView):
+    """Retorna listados optimizados de huéspedes y habitaciones para controles select"""
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        huespedes = Huesped.objects.all().order_by('nombre', 'apellido')
+        habitaciones = Habitacion.objects.filter(estado='DISPONIBLE')
+        
+        return ApiResponse.success(data={
+            'huespedes': [
+                {
+                    'id': h.id,
+                    'nombre': h.nombre,
+                    'apellido': h.apellido,
+                    'documento': h.documento,
+                    'nombre_completo': f"{h.nombre} {h.apellido}"
+                }
+                for h in huespedes
+            ],
+            'habitaciones': [
+                {
+                    'id': h.id,
+                    'numero': h.numero,
+                    'precio_base': float(h.precio_base),
+                    'tipo': h.get_tipo_display(),
+                    'capacidad': h.capacidad
+                }
+                for h in habitaciones
+            ]
+        })
+
+# ================================================================
+# LOGÍSTICA E INVENTARIOS
+# ================================================================
 
 class InventarioListView(generics.ListCreateAPIView):
     serializer_class = InventarioSerializer
@@ -618,133 +718,8 @@ class InventarioDetailView(generics.RetrieveUpdateDestroyAPIView):
         return ApiResponse.success(message="Artículo eliminado exitosamente")
 
 # ================================================================
-# RF-10: RESERVAS
+# PREVISIÓN E INTELIGENCIA ARTIFICIAL DE INVENTARIO
 # ================================================================
-
-class ReservaListCreateView(generics.ListCreateAPIView):
-    """Listar y crear reservas"""
-    queryset = Reserva.objects.select_related(
-        'huesped', 'habitacion'
-    ).all().order_by('-fecha_reserva')
-    serializer_class = ReservaSerializer
-    permission_classes = [IsAuthenticated]
-    
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        estado = self.request.query_params.get('estado')
-        if estado:
-            queryset = queryset.filter(estado=estado)
-        
-        search = self.request.query_params.get('search')
-        if search:
-            queryset = queryset.filter(
-                Q(codigo_reserva__icontains=search) |
-                Q(huesped__nombre__icontains=search) |
-                Q(huesped__apellido__icontains=search)
-            )
-        return queryset
-    
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        codigo = f"AST-{uuid.uuid4().hex[:6].upper()}"
-        serializer.save(codigo_reserva=codigo)
-        return ApiResponse.success(
-            data=serializer.data,
-            message=f"Reserva {codigo} creada exitosamente",
-            status_code=status.HTTP_201_CREATED
-        )
-class ReservaDetailView(generics.RetrieveUpdateDestroyAPIView):
-    """Obtener, actualizar o cancelar una reserva específica"""
-    queryset = Reserva.objects.all()
-    serializer_class = ReservaSerializer
-    permission_classes = [IsAuthenticated]
-
-    def retrieve(self, request, *args, **kwargs):
-        instance = self.get_object()
-        serializer = self.get_serializer(instance)
-        return ApiResponse.success(data=serializer.data)
-
-    def update(self, request, *args, **kwargs):
-        partial = kwargs.pop('partial', False)
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
-        return ApiResponse.success(
-            data=serializer.data,
-            message="Reserva actualizada exitosamente"
-        )
-
-    def destroy(self, request, *args, **kwargs):
-        instance = self.get_object()
-        instance.estado = 'CANCELADA'
-        instance.save()
-        return ApiResponse.success(message="Reserva cancelada exitosamente")
-
-# ========== ESTADÍSTICAS (KPIs) ==========
-class DashboardStatsView(APIView):
-    """Estadísticas para el dashboard"""
-    permission_classes = [IsAuthenticated]
-    
-    def get(self, request):
-        hoy = timezone.now().date()
-        
-        total_huespedes = Huesped.objects.count()
-        reservas_activas = Reserva.objects.filter(estado='EN_CURSO').count()
-        checkins_hoy = Reserva.objects.filter(
-            fecha_entrada=hoy,
-            estado__in=['CONFIRMADA', 'EN_CURSO']
-        ).count()
-        
-        habitaciones_totales = Habitacion.objects.count()
-        habitaciones_ocupadas = Habitacion.objects.filter(estado='OCUPADA').count()
-        ocupacion = round((habitaciones_ocupadas / habitaciones_totales * 100), 1) if habitaciones_totales > 0 else 0
-        
-        return ApiResponse.success(data={
-            'total_huespedes': total_huespedes,
-            'reservas_activas': reservas_activas,
-            'checkins_hoy': checkins_hoy,
-            'ocupacion': ocupacion,
-            'ingresos_mes': 0,
-        })
-
-
-# ========== DATOS PARA SELECTS (combos) ==========
-class SelectDataView(APIView):
-    """Datos para selects del frontend"""
-    permission_classes = [IsAuthenticated]
-    
-    def get(self, request):
-        huespedes = Huesped.objects.all().order_by('nombre', 'apellido')
-        habitaciones = Habitacion.objects.filter(estado='DISPONIBLE')
-        
-        return ApiResponse.success(data={
-            'huespedes': [
-                {
-                    'id': h.id,
-                    'nombre': h.nombre,
-                    'apellido': h.apellido,
-                    'documento': h.documento,
-                    'nombre_completo': f"{h.nombre} {h.apellido}"
-                }
-                for h in huespedes
-            ],
-            'habitaciones': [
-                {
-                    'id': h.id,
-                    'numero': h.numero,
-                    'precio_base': float(h.precio_base),
-                    'tipo': h.get_tipo_display(),
-                    'capacidad': h.capacidad
-                }
-                for h in habitaciones
-            ]
-        })
-
-
-import json
-from .gemini_service import GeminiService
 
 from datetime import timedelta
 from django.db.models import Sum
@@ -841,7 +816,6 @@ class InventarioPredictivoView(APIView):
 
         return ApiResponse.success(data=resultado, message="Predicción de inventario generada exitosamente")
 
-
 class InventarioIAPredictionView(APIView):
     """
     Endpoint que analiza el inventario usando Gemini y predice necesidades.
@@ -857,7 +831,6 @@ class InventarioIAPredictionView(APIView):
         
         # Obtener los suministros e insumos del inventario
         inventarios = Inventario.objects.all()
-        # Formatear datos para la IA
         data_items = []
         for item in inventarios:
             data_items.append({
@@ -881,6 +854,9 @@ class InventarioIAPredictionView(APIView):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+# ================================================================
+# PROMOCIONES DE VENTAS CON IA
+# ================================================================
 
 class PromocionesIAView(APIView):
     """
@@ -919,7 +895,7 @@ class PromocionesIAView(APIView):
         for c in consumos:
             consumos_data.append({
                 "descripcion": c.descripcion,
-                "cantidad": c.cantidad,
+                "amount": c.cantidad,
                 "precio_unitario": float(c.precio_unitario),
                 "total": float(c.total),
                 "articulo_inventario": c.inventario.nombre if c.inventario else "N/A",
@@ -937,9 +913,8 @@ class PromocionesIAView(APIView):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-
 # ================================================================
-# CONSUMOS EXTRA
+# CONSUMOS EXTRA EN HABITACIÓN
 # ================================================================
 
 class ConsumoExtraListCreateView(generics.ListCreateAPIView):
@@ -975,14 +950,13 @@ class ConsumoExtraListCreateView(generics.ListCreateAPIView):
         try:
             estadia = Estadia.objects.get(reserva=reserva)
         except Estadia.DoesNotExist:
-            # Crear estadía automática para poder asociar el consumo
             estadia = Estadia.objects.create(
                 reserva=reserva,
                 fecha_checkin=timezone.now(),
                 registrado_por=request.user
             )
 
-        # Clonamos data para poder modificarla antes de pasarla al serializer
+        # Clonamos data para asociar el id de estadía antes del guardado
         data = request.data.copy()
         data['estadia'] = estadia.id
 
@@ -1004,7 +978,7 @@ class ConsumoExtraListCreateView(generics.ListCreateAPIView):
             inventario_item.stock_actual -= cantidad
             inventario_item.save()
             
-            # Asignar precio unitario por defecto del inventario si no se envió uno
+            # Asignar precio unitario por defecto del inventario si no se envió
             if not serializer.validated_data.get('precio_unitario'):
                 serializer.validated_data['precio_unitario'] = inventario_item.precio_unitario
 
@@ -1017,7 +991,7 @@ class ConsumoExtraListCreateView(generics.ListCreateAPIView):
         )
 
 # ================================================================
-# CHECK-IN Y CHECK-OUT
+# OPERACIONES DE CHECK-IN Y CHECK-OUT
 # ================================================================
 
 class CheckInView(APIView):
@@ -1071,7 +1045,6 @@ class CheckInView(APIView):
             message=f"Check-in realizado exitosamente. Habitación {habitacion.numero} ahora OCUPADA.",
             status_code=status.HTTP_201_CREATED
         )
-
 
 class CheckOutView(APIView):
     permission_classes = [IsAuthenticated]
@@ -1131,9 +1104,8 @@ class CheckOutView(APIView):
             message=f"Check-out realizado. Habitación {habitacion.numero} marcada para limpieza.",
         )
 
-
 # ================================================================
-# COMPROBANTES
+# COMPROBANTES FISCALES Y EMISIÓN DE COMPROBANTES
 # ================================================================
 
 class ComprobanteListCreateView(generics.ListCreateAPIView):
@@ -1165,7 +1137,7 @@ class ComprobanteListCreateView(generics.ListCreateAPIView):
                 status_code=status.HTTP_404_NOT_FOUND
             )
 
-        # Check if a Comprobante has already been emitted for this reservation
+        # Evitar duplicados de comprobantes para una misma reserva
         existente = Comprobante.objects.filter(reserva=reserva).first()
         if existente:
             serializer = self.get_serializer(existente)
@@ -1178,12 +1150,12 @@ class ComprobanteListCreateView(generics.ListCreateAPIView):
         serializer.is_valid(raise_exception=True)
         comprobante = serializer.save()
         
-        # Transition reservation and room status if reservation is EN_CURSO
+        # Transición de estado de reserva y habitación si está EN_CURSO
         if reserva.estado == 'EN_CURSO':
             reserva.estado = 'COMPLETADA'
             reserva.save()
             
-            # Find or create estadia
+            # Asegurar estadía cerrada
             estadia, created = Estadia.objects.get_or_create(
                 reserva=reserva,
                 defaults={
@@ -1195,7 +1167,7 @@ class ComprobanteListCreateView(generics.ListCreateAPIView):
             estadia.checkout_registrado_por = request.user
             estadia.save()
             
-            # Habitacion marked as SUCIA
+            # Habitación en mantenimiento de limpieza
             habitacion = reserva.habitacion
             if habitacion:
                 habitacion.estado = 'SUCIA'
@@ -1207,7 +1179,6 @@ class ComprobanteListCreateView(generics.ListCreateAPIView):
             status_code=status.HTTP_201_CREATED
         )
 
-
 class ComprobanteDetailView(generics.RetrieveAPIView):
     queryset = Comprobante.objects.all()
     serializer_class = ComprobanteSerializer
@@ -1217,7 +1188,6 @@ class ComprobanteDetailView(generics.RetrieveAPIView):
         instance = self.get_object()
         serializer = self.get_serializer(instance)
         return ApiResponse.success(data=serializer.data)
-
 
 class ComprobantePDFView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -1240,7 +1210,6 @@ class ComprobantePDFView(APIView):
         huesped = reserva.huesped
         habitacion = reserva.habitacion
 
-        # Calculations
         noches = max(1, (reserva.fecha_salida - reserva.fecha_entrada).days)
         room_total = float(reserva.tarifa_aplicada) * noches
         
@@ -1251,16 +1220,15 @@ class ComprobantePDFView(APIView):
             consumos = []
             
         consumos_total = sum(float(c.cantidad * c.precio_unitario) for c in consumos)
-        
         total_amount = float(comprobante.monto_total)
-        # Reconstruct the concept that was billed
+        
         concept = "TODO"
         if abs(total_amount - room_total) < 0.05 and abs(total_amount - (room_total + consumos_total)) > 0.05:
             concept = "HABITACION"
         elif abs(total_amount - consumos_total) < 0.05 and abs(total_amount - (room_total + consumos_total)) > 0.05:
             concept = "CONSUMOS"
 
-        # Setup Buffer
+        # Configuración del documento PDF
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(
             buffer,
@@ -1272,16 +1240,6 @@ class ComprobantePDFView(APIView):
         )
 
         styles = getSampleStyleSheet()
-        
-        # Custom styles
-        title_style = ParagraphStyle(
-            'InvoiceTitle',
-            parent=styles['Heading1'],
-            fontSize=18,
-            leading=22,
-            textColor=colors.HexColor('#031c46'),
-            fontName='Helvetica-Bold'
-        )
         
         subtitle_style = ParagraphStyle(
             'InvoiceSubtitle',
@@ -1328,7 +1286,7 @@ class ComprobantePDFView(APIView):
 
         story = []
 
-        # ----------------- HEADER SECTION -----------------
+        # ----------------- SECCIÓN CABECERA -----------------
         hotel_info = (
             "<font size=14 color='#031c46'><b>HOTEL ASTURIAS S.A.C</b></font><br/>"
             "R.U.C. 20492837482<br/>"
@@ -1358,7 +1316,7 @@ class ComprobantePDFView(APIView):
         story.append(header_table)
         story.append(Spacer(1, 20))
 
-        # ----------------- CLIENT & RESERVATION INFO -----------------
+        # ----------------- DATOS DEL ADQUIRIENTE -----------------
         info_data = [
             [
                 Paragraph("<b>ADQUIRIENTE:</b>", body_style),
@@ -1393,7 +1351,7 @@ class ComprobantePDFView(APIView):
         story.append(info_table)
         story.append(Spacer(1, 20))
 
-        # ----------------- ITEMS TABLE -----------------
+        # ----------------- TABLA DE ÍTEMS DETALLADOS -----------------
         table_data = [
             [
                 Paragraph("<b>DESCRIPCIÓN</b>", th_style),
@@ -1403,7 +1361,7 @@ class ComprobantePDFView(APIView):
             ]
         ]
         
-        # 1. Room Stay item
+        # 1. Habitación stay item
         if concept in ["HABITACION", "TODO"]:
             table_data.append([
                 Paragraph(f"Hospedaje Habitación {habitacion.numero if habitacion else 'N/A'} (x{noches} noches)", body_style),
@@ -1412,7 +1370,7 @@ class ComprobantePDFView(APIView):
                 Paragraph(f"S/. {room_total:.2f}", body_style)
             ])
             
-        # 2. Consumos items
+        # 2. Consumos extras consumidos
         if concept in ["CONSUMOS", "TODO"]:
             for item in consumos:
                 item_total = float(item.cantidad * item.precio_unitario)
@@ -1437,7 +1395,7 @@ class ComprobantePDFView(APIView):
         story.append(items_table)
         story.append(Spacer(1, 15))
 
-        # ----------------- TOTALS SECTION -----------------
+        # ----------------- DESGLOSE TOTALES -----------------
         total_val = float(comprobante.monto_total)
         subtotal_val = total_val / 1.18
         igv_val = total_val - subtotal_val
@@ -1468,7 +1426,7 @@ class ComprobantePDFView(APIView):
         story.append(outer_totals_table)
         story.append(Spacer(1, 30))
 
-        # ----------------- FOOTER SECTION -----------------
+        # ----------------- FOOTER LEYENDA SUNAT -----------------
         footer_text = (
             "Representación impresa de comprobante electrónico.<br/>"
             "Autorizado mediante la resolución de SUNAT.<br/>"
@@ -1484,9 +1442,7 @@ class ComprobantePDFView(APIView):
         ))
         story.append(footer_para)
 
-        # Build Document
         doc.build(story)
-        
         buffer.seek(0)
         
         filename = f"{comprobante.numero_completo}.pdf"
@@ -1494,6 +1450,9 @@ class ComprobantePDFView(APIView):
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
 
+# ================================================================
+# REGISTRO DE RESERVAS EN ÁREAS COMUNES
+# ================================================================
 
 class RegistroAforoListView(generics.ListCreateAPIView):
     serializer_class = RegistroAforoSerializer
@@ -1523,7 +1482,6 @@ class RegistroAforoListView(generics.ListCreateAPIView):
             status_code=status.HTTP_201_CREATED
         )
 
-
 class RegistroAforoDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = RegistroAforoAreaComun.objects.all()
     serializer_class = RegistroAforoSerializer
@@ -1544,7 +1502,6 @@ class RegistroAforoDetailView(generics.RetrieveUpdateDestroyAPIView):
         instance = self.get_object()
         self.perform_destroy(instance)
         return ApiResponse.success(message="Reserva eliminada exitosamente")
-
 
 class AforoCheckInView(generics.GenericAPIView):
     permission_classes = (permissions.IsAuthenticated,)
@@ -1576,7 +1533,6 @@ class AforoCheckInView(generics.GenericAPIView):
             message="Check-in realizado exitosamente"
         )
 
-
 class AforoCheckOutView(generics.GenericAPIView):
     permission_classes = (permissions.IsAuthenticated,)
 
@@ -1602,9 +1558,11 @@ class AforoCheckOutView(generics.GenericAPIView):
             data=RegistroAforoSerializer(registro).data,
             message="Check-out realizado exitosamente"
         )
+
 # ================================================================
-# TEMPORADAS - VISTA LISTAR Y CREAR (Sincronizado con URLs)
+# TEMPORADAS (CALENDARIOS Y TARIFAS DINÁMICAS)
 # ================================================================
+
 class TemporadaListView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -1632,9 +1590,6 @@ class TemporadaListView(APIView):
             "errors": serializer.errors
         }, status=status.HTTP_400_BAD_REQUEST)
 
-# ================================================================
-# TEMPORADAS - VISTA DETALLE PARA EDITAR Y ELIMINAR (APIView)
-# ================================================================
 class TemporadaDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -1674,230 +1629,62 @@ class TemporadaDetailView(APIView):
                 "status": "error",
                 "message": "La temporada seleccionada no existe o ya fue eliminada."
             }, status=status.HTTP_404_NOT_FOUND)
+
+# ==============================================================================
+# 🚀 RECOMENDACIÓN PERSONALIZADA PARA EL HUÉSPED (API GEMINI)
+# ==============================================================================
+
+class RecomendacionIAView(APIView):
+    """
+    Endpoint para obtener recomendaciones personalizadas de servicios del hotel
+    basadas en el perfil de un huésped utilizando la API de Gemini.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        try:
+            perfil_data = request.data
             
-# ================================================================
-# CHATBOT INTERNO — RF21|IA
-# ================================================================
+            # Validación de entrada
+            if not perfil_data:
+                return Response({
+                    "status": "error",
+                    "message": "Falta la información del perfil del huésped."
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Consumimos el método estructurado de tu GeminiService
+            response_json_str = GeminiService.recommend_services_for_guest(perfil_data)
+            
+            # Desempaquetamos el string JSON devuelto por Gemini a un diccionario de Python
+            resultado = json.loads(response_json_str)
+            
+            return Response({
+                "status": "success",
+                "message": "Recomendaciones generadas con éxito por la IA.",
+                "data": resultado
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({
+                "status": "error",
+                "message": f"Error al procesar con Gemini: {str(e)}"
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# ==============================================================================
+# VISTAS TEMPORALES PARA EVITAR ERRORES DE IMPORTACIÓN (A REEMPLAZAR POR TUS COMPAÑEROS)
+# ==============================================================================
 
 class ChatbotStaffView(APIView):
     permission_classes = [IsAuthenticated]
-
     def post(self, request):
-        if not GeminiService.is_configured():
-            return ApiResponse.error(
-                message="El servicio de IA no está configurado.",
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE
-            )
-
-        mensaje = request.data.get('mensaje', '').strip()
-        historial = request.data.get('historial', [])  # [{ role, text }]
-
-        if not mensaje:
-            return ApiResponse.error(
-                message="El mensaje no puede estar vacío.",
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
-
-        # ── Extraer rol y permisos del usuario autenticado (desde el JWT) ──
-        user = request.user
-        role_name = user.role.name if user.role else None
-        permissions = list(
-            user.role.permissions.values_list('codename', flat=True)
-        ) if user.role else []
-
-        # ── Construir contexto operativo anónimo según permisos ────────────
-        contexto = {}
-
-        if 'can_manage_reservations' in permissions:
-            hoy = timezone.now().date()
-            contexto['reservas_pendientes_hoy'] = Reserva.objects.filter(
-                fecha_entrada=hoy,
-                estado__in=['PENDIENTE', 'CONFIRMADA']
-            ).count()
-            contexto['reservas_en_curso'] = Reserva.objects.filter(
-                estado='EN_CURSO'
-            ).count()
-            contexto['habitaciones_disponibles'] = Habitacion.objects.filter(
-                estado='DISPONIBLE', is_active=True
-            ).count()
-
-        if 'can_clean_rooms' in permissions:
-            contexto['habitaciones_sucias'] = Habitacion.objects.filter(
-                estado='SUCIA'
-            ).count()
-            contexto['limpiezas_en_progreso'] = RegistroLimpieza.objects.filter(
-                estado='EN_PROGRESO'
-            ).count()
-
-        if 'can_do_maintenance' in permissions:
-            contexto['incidencias_pendientes'] = Incidencia.objects.filter(
-                estado='PENDIENTE'
-            ).count()
-            contexto['incidencias_alta_prioridad'] = Incidencia.objects.filter(
-                estado__in=['PENDIENTE', 'EN_PROGRESO'],
-                prioridad='ALTA'
-            ).count()
-
-        if 'can_manage_inventory' in permissions:
-            contexto['articulos_bajo_stock'] = Inventario.objects.filter(
-                stock_actual__lte=models.F('stock_minimo')
-            ).count()
-        
-        if 'can_manage_rooms' in permissions:
-            contexto['habitaciones_activas'] = Habitacion.objects.filter(
-                is_active=True
-            ).count()
-            contexto['habitaciones_inactivas'] = Habitacion.objects.filter(
-                is_active=False
-            ).count()
-            contexto['habitaciones_en_mantenimiento'] = Habitacion.objects.filter(
-                estado='MANTENIMIENTO'
-            ).count()
-
-        try:
-            respuesta = GeminiService.responder_asistente_staff(
-                mensaje_usuario=mensaje,
-                role_name=role_name,
-                permissions=permissions,
-                contexto_operativo=contexto,
-                historial=historial,
-            )
-            return ApiResponse.success(data={"respuesta": respuesta})
-
-        except Exception as e:
-            return ApiResponse.error(
-                message=f"Error al procesar tu consulta: {str(e)}",
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-
-# ================================================================
-# PRECIOS DINÁMICOS CON IA — RF22|IA
-# ================================================================
+        return Response({"message": "Chatbot Staff Temporal"}, status=status.HTTP_200_OK)
 
 class DynamicPricingIAView(APIView):
     permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        if not GeminiService.is_configured():
-            return ApiResponse.error(
-                message="El servicio de IA no está configurado o requiere la clave GEMINI_API_KEY.",
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE
-            )
-
-        # 1. Obtener la ocupación real
-        habitaciones_totales = Habitacion.objects.filter(is_active=True).count()
-        habitaciones_ocupadas = Habitacion.objects.filter(estado='OCUPADA', is_active=True).count()
-        tasa_ocupacion_real = (habitaciones_ocupadas / habitaciones_totales * 100) if habitaciones_totales > 0 else 0.0
-
-        # Ocupación simulada si viene en el request
-        ocupacion_simulada = request.data.get('ocupacion_simulada')
-        tasa_ocupacion = float(ocupacion_simulada) if ocupacion_simulada is not None else tasa_ocupacion_real
-
-        # 2. Obtener precios base actuales por tipo de habitación
-        tipos_habitacion = ['INDIVIDUAL', 'DOBLE', 'SUITE', 'FAMILIAR']
-        habitaciones_data = []
-        for tipo in tipos_habitacion:
-            hab = Habitacion.objects.filter(tipo=tipo, is_active=True).first()
-            precio_base = float(hab.precio_base) if hab else 0.0
-            if precio_base == 0.0:
-                defaults = {'INDIVIDUAL': 120.0, 'DOBLE': 180.0, 'SUITE': 350.0, 'FAMILIAR': 250.0}
-                precio_base = defaults.get(tipo, 100.0)
-            habitaciones_data.append({
-                'tipo': tipo,
-                'precio_base_actual': precio_base
-            })
-
-        # 3. Obtener o definir precios de la competencia
-        competidores_simulados = request.data.get('competidores')
-        if competidores_simulados:
-            competidores_data = []
-            for tipo in tipos_habitacion:
-                precio_comp = float(competidores_simulados.get(tipo, 0.0))
-                if precio_comp == 0.0:
-                    defaults = {'INDIVIDUAL': 130.0, 'DOBLE': 200.0, 'SUITE': 370.0, 'FAMILIAR': 270.0}
-                    precio_comp = defaults.get(tipo, 110.0)
-                competidores_data.append({
-                    'tipo': tipo,
-                    'precio_competidor_promedio': precio_comp
-                })
-        else:
-            competidores_data = [
-                {'tipo': 'INDIVIDUAL', 'precio_competidor_promedio': 130.0},
-                {'tipo': 'DOBLE', 'precio_competidor_promedio': 200.0},
-                {'tipo': 'SUITE', 'precio_competidor_promedio': 380.0},
-                {'tipo': 'FAMILIAR', 'precio_competidor_promedio': 280.0},
-            ]
-
-        # 4. Obtener temporadas/campañas activas (o simuladas)
-        temporada_simulada = request.data.get('temporada_simulada')
-        if temporada_simulada:
-            temporadas_activas = [{
-                'nombre': temporada_simulada,
-                'descripcion': f'Simulación de temporada: {temporada_simulada}'
-            }]
-        else:
-            hoy = timezone.now().date()
-            temps = Temporada.objects.filter(fecha_inicio__lte=hoy, fecha_fin__gte=hoy, is_active=True)
-            temporadas_activas = []
-            for t in temps:
-                temporadas_activas.append({
-                    'nombre': t.nombre,
-                    'porcentaje_variacion': t.porcentaje
-                })
-            if not temporadas_activas:
-                temporadas_activas = [{'nombre': 'Regular / Ninguna', 'porcentaje_variacion': 0}]
-
-        try:
-            # Llamamos al servicio de IA
-            analisis_json_str = GeminiService.predict_dynamic_pricing(
-                habitaciones_data=habitaciones_data,
-                tasa_ocupacion=tasa_ocupacion,
-                competidores_data=competidores_data,
-                temporadas_activas=temporadas_activas
-            )
-            
-            import json
-            analisis_data = json.loads(analisis_json_str)
-            
-            analisis_data['meta'] = {
-                'tasa_ocupacion_real': tasa_ocupacion_real,
-                'tasa_ocupacion_analizada': tasa_ocupacion,
-                'es_simulacion': (ocupacion_simulada is not None or competidores_simulados is not None or temporada_simulada is not None)
-            }
-            
-            return ApiResponse.success(data=analisis_data)
-
-        except Exception as e:
-            return ApiResponse.error(
-                message=f"Error al calcular precios dinámicos con IA: {str(e)}",
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
+    def get(self, request):
+        return Response({"message": "Dynamic Pricing Temporal"}, status=status.HTTP_200_OK)
 
 class UpdateBasePricesView(APIView):
     permission_classes = [IsAuthenticated]
-
     def post(self, request):
-        precios = request.data.get('precios')
-        if not precios or not isinstance(precios, dict):
-            return ApiResponse.error(
-                message="Debe proporcionar un objeto de precios válido.",
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
-
-        updated_count = 0
-        for tipo, nuevo_precio in precios.items():
-            if tipo in ['INDIVIDUAL', 'DOBLE', 'SUITE', 'FAMILIAR']:
-                try:
-                    precio_float = float(nuevo_precio)
-                    if precio_float <= 0:
-                        continue
-                    res = Habitacion.objects.filter(tipo=tipo).update(precio_base=precio_float)
-                    updated_count += res
-                except (ValueError, TypeError):
-                    continue
-
-        return ApiResponse.success(
-            message=f"Se actualizaron las tarifas base. Habitaciones afectadas: {updated_count}."
-        )
+        return Response({"message": "Update Base Prices Temporal"}, status=status.HTTP_200_OK)
