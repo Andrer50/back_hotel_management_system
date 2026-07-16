@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import path, include
 from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     RegisterView,
@@ -30,21 +30,22 @@ from .views import (
     InventarioListView,
     InventarioDetailView,
     InventarioIAPredictionView,
+    InventarioPredictivoView,
     PromocionesIAView,
+    RecomendacionIAView,  # 🧠 ¡Tu ruta de IA!
     ConsumoExtraListCreateView,
     ComprobanteListCreateView,
     ComprobanteDetailView,
     ComprobantePDFView,
-    # 🔥 PARCHE DE IMPORTACIONES: Aquí conectamos las vistas que Django reclamaba
     CheckInView,
     CheckOutView,
     RegistroAforoListView,
     RegistroAforoDetailView,
-    # 📈 TU MÓDULO: Conexión con tus vistas de temporadas corregidas
     TemporadaListView,
     TemporadaDetailView,
-    # 🧠 NUEVO: Importamos la vista de recomendación IA directamente
-    RecomendacionIAView
+    ChatbotStaffView,
+    DynamicPricingIAView,
+    UpdateBasePricesView
 )
 from .auth_views import MyTokenObtainPairView
 
@@ -107,16 +108,26 @@ urlpatterns = [
     path('reservas/<int:pk>/checkin', CheckInView.as_view(), name='reserva-checkin'),
     path('reservas/<int:pk>/checkout', CheckOutView.as_view(), name='reserva-checkout'),
     
-    # ========== MANTENIMIENTO DE TEMPORADAS (TU CRUD) ==========
+    # ========== MANTENIMIENTO DE TEMPORADAS ==========
     path('temporadas', TemporadaListView.as_view(), name='temporada-list-create'),
     path('temporadas/<int:pk>', TemporadaDetailView.as_view(), name='temporada-detail'),
     
-    # ========== PANEL Y SELECTS (LIMPIADOS DE DUPLICADOS) ==========
+    # ========== PANEL Y SELECTS ==========
     path('dashboard/stats', DashboardStatsView.as_view(), name='dashboard-stats'),
     path('select-data', SelectDataView.as_view(), name='select-data'),
     
     # ========== INTEGRACIÓN GEMINI AI ==========
+    path('inventarios/predictivo', InventarioPredictivoView.as_view(), name='inventario-predictivo'),
     path('inventarios/analisis-ia', InventarioIAPredictionView.as_view(), name='inventario-analisis-ia'),
     path('promociones/analisis-ia', PromocionesIAView.as_view(), name='promociones-analisis-ia'),
-    path('ia/recomendar-servicios', RecomendacionIAView.as_view(), name='recomendar_servicios_ia'),
+    path('ia/recomendar-servicios', RecomendacionIAView.as_view(), name='recomendar_servicios_ia'),  # 🧠 ¡Tu ruta de IA aquí!
 ]
+
+# Rutas del módulo de reseñas (HU-18) y servicios extendidos
+urlpatterns += [
+    path('', include('hotel.resenas.urls')),
+    path('chatbot', ChatbotStaffView.as_view(), name='chatbot-staff'),
+    path('precios/analisis-ia', DynamicPricingIAView.as_view(), name='precios-analisis-ia'),
+    path('precios/aplicar-tarifas', UpdateBasePricesView.as_view(), name='precios-aplicar-tarifas'),
+]
+

@@ -1,7 +1,7 @@
 from django.contrib import admin
 from .models import Incidencia
 from django.contrib.auth.admin import UserAdmin
-from .models import Usuario, Sede, Habitacion, Huesped, Reserva, Comprobante
+from .models import Usuario, Sede, Habitacion, Huesped, Reserva, Comprobante, Resena
 
 # Registrar Usuario con el admin personalizado de Django
 admin.site.register(Usuario, UserAdmin)
@@ -35,3 +35,23 @@ class ComprobanteAdmin(admin.ModelAdmin):
     list_display = ('id', 'numero_completo', 'reserva', 'tipo_comprobante', 'monto_total', 'fecha_emision')
     list_filter = ('tipo_comprobante', 'metodo_pago')
     search_fields = ('reserva__codigo_reserva', 'nombre_cliente', 'documento_cliente')
+
+
+@admin.register(Resena)
+class ResenaAdmin(admin.ModelAdmin):
+    list_display = (
+        'id',
+        'estadia',
+        'calificacion',
+        'comentario',
+        'fecha_creacion',
+        'es_inapropiada',
+        'respuesta_administrador'
+    )
+    list_filter = ('es_inapropiada', 'calificacion')
+    search_fields = (
+        'estadia__reserva__codigo_reserva',
+        'estadia__reserva__huesped__apellido',
+        'comentario'
+    )
+    readonly_fields = ('fecha_creacion',)
